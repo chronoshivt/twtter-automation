@@ -49,6 +49,13 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
       "--disable-component-update",
       "--disable-domain-reliability",
       "--disable-sync",
+      '--aggressive-cache-discard',
+'--disable-cache',
+'--disable-application-cache',
+'--disable-offline-load-stale-cache',
+'--disable-gpu-shader-disk-cache',
+'--media-cache-size=0',
+'--disk-cache-size=0',
     ],
   });
   const page = await browser.newPage();
@@ -321,7 +328,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
     var randomnessArr = [];
     await fs.readFile(file, "utf-8").then((content) => {
       tweets = JSON.parse(content);
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 6; i++) {
         randomNumber = Math.floor(Math.random() * (tweets.length - 1));
         if (filter && tweets[randomNumber].includes(word_filter) == false) {
           i--;
@@ -332,7 +339,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
           continue;
         }
         randomnessArr.push(randomNumber);
-        randomTweets.push(tweets[randomNumber]);
+        randomTweets.push(tweets[randomNumber]+"\n");
       }
     });
 
@@ -342,8 +349,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
       "Example tweets: " + finalArr.length,
       finalArr
     );
-    let stringTweets = finalArr.join("\n");
-    return stringTweets;
+    return finalArr;
   }
 
   // Remove duplicate tweets in a file STILL WIP
@@ -371,62 +377,85 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
         );
       });
   }
+async function combineAndShuffle(arr1, arr2) {
+
+  const combinedArray = arr1.concat(arr2).map((element, index) => `tweet #${index}: ${element}`);
+  for (let i = combinedArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [combinedArray[i], combinedArray[j]] = [combinedArray[j], combinedArray[i]];
+  }
+  let stringTweets = combinedArray.join("\n");
+  return stringTweets;
+
+}
+  
+// Farming UnkleDell tweets
+
+// let farmArr = [
+//   "UnkleDell"
+// ]
+
+//   await farmTweets(farmArr,"UnkleDell.json");
+
+
 
   const configuration = new Configuration({
     apiKey: api_key,
   });
   const openai = new OpenAIApi(configuration);
 
-  for (let index = 0; index < 14; index++) {
-    let prompt =
-      "Below are a sample set tweets on a user's twitter timeline.\n" +
-      "Set 1: \n" +
-      ((await randomArrayOfTweets(
-        "./tweetsArchive/waters/retardangel.json",
-        ""
-      )) +
-        "\n") +
-      // ((await randomArrayOfTweets(
-      //   "./tweetsArchive/waters/1028.json",
-      //   "nigga"
-      // )) +
-      //   "\n") +
-      "Set 2: \n" +
-      ((await randomArrayOfTweets("./tweetsArchive/HpdDaily.json")) + "\n") +
-      // ((await randomArrayOfTweets("./tweetsArchive/miya-archive.json")) +
-      //   "\n") +
-      // ((await randomArrayOfTweets("./tweetsArchive/UnkleDell.json", "")) +
-      //   "\n") +
-      "\n Combine one tweet from each set of the above tweets to create a new, funny, original and realistic post between 3 and 20 words long. Avoid creating any non-sensical sentences. Type in all lowercase and Do NOT use any hashtags in the post.\n";
-    const response = await openai.createCompletion(
-      JSON.stringify({
-        model: "text-davinci-003",
-        prompt: prompt,
-        temperature: 1,
-        max_tokens: 64,
-        top_p: 0.7,
-        frequency_penalty: 0,
-        // presence_penalty: 1.2,
-        n: 1,
-        stream: false,
-        logprobs: null,
-      })
-    );
-    let generated = response.data.choices;
-    let toFile = [];
-    generated.forEach((gen) => {
-      var txt = gen.text.trim();
-      toFile.push(txt);
-    });
 
-    console.log("Howl says: ", toFile);
-    await makeATweet(toFile[0]);
+ 
+  // add humor explanation
+  // Also provide the tweet numbers from which material was sourced from to produce the shitpost and
+  // the possible humor of it.\n
+  // Give me the response in the following format:\n
+  // shitpost:\n
+  function removeHashtags(str) {
+    return str.replace(/#[\w\d-]+/gi, '');
+  }
+  
+  let GPT35Turbo = async (message) => {
+    const response = await openai.createChatCompletion({
+      model: "gpt-3.5-turbo",
+      messages: message,
+    });
+  
+    return response.data.choices[0].message.content;
+  };
+  // console.log("-----------------------")
+  // console.log("GPT3.5-TURBO says: ", await GPT35Turbo(GPT35TurboMessage));
+  for (let index = 0; index < 14; index++) {
+
+    let shuffled = await combineAndShuffle(await randomArrayOfTweets("./tweetsArchive/miya-archive.json"),await randomArrayOfTweets("./tweetsArchive/UnkleDell.json","nigga"));
+
+    console.log(1,shuffled);
+  
+     const GPT35TurboMessage = [
+      { role: "system", content: `
+      You are a helpful assistant tasked with producing quality shitposts for the user.\n
+      The definition of the word shitpost is: In Internet culture, shitposting is the act of using an online forum or social media page to post content that is satirical and of "aggressively, ironically, and trollishly poor quality", an online analog of trash talk. Shitposts are intentionally designed to derail discussions or cause the biggest reaction with the least effort. Shitposts never contain hashtags.` },
+      {
+        role: "user",
+        content: `Given the sample set of tweets provided below, use the contents from between 2 to 5 tweets as source material to write 1 original shitpost.
+         The shitpost should be between 7 to 30 words in length.
+          It must be completely lowercase, not contain ANY hashtags, and not be incoherent.
+  
+         `+'Sample tweets:\n'+JSON.stringify(shuffled)
+      },
+    ];
+
+    let generated = removeHashtags(await GPT35Turbo(GPT35TurboMessage));
+
+    console.log("Howl says: ", generated);
+    await makeATweet(generated);
     var waitingFor = Util.aLongTime();
     console.log(
       "Waiting for " + waitingFor / 60000 + " minutes before tweeting again."
     );
     await Util.waitFor(waitingFor);
   }
+
 
   await browser.close();
   console.timeEnd("whole task");
