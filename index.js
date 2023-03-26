@@ -65,7 +65,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
   const cookies = JSON.parse(cookieString);
   await page.setCookie(...cookies);
 
-  await Util.goToPage(page, "https://chronoshivt.com/");
+  await Util.goToPage(page, "https://google.com/");
 
   // Sign into Twitter. Only needs to be done once per cookies.
   async function signIn() {
@@ -106,7 +106,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
     console.timeEnd("make a tweet");
     console.log("Tweeted out: " + tweet);
     await Util.waitFor(3000);
-    await Util.goToPage(page, "https://chronoshivt.com/");
+    await Util.goToPage(page, "https://google.com/");
     return;
   }
 
@@ -417,7 +417,7 @@ async function combineAndShuffle(arr1, arr2) {
   
   let GPT35Turbo = async (message) => {
     const response = await openai.createChatCompletion({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4",
       messages: message,
     });
   
@@ -427,25 +427,27 @@ async function combineAndShuffle(arr1, arr2) {
   // console.log("GPT3.5-TURBO says: ", await GPT35Turbo(GPT35TurboMessage));
   for (let index = 0; index < 14; index++) {
 
-    let shuffled = await combineAndShuffle(await randomArrayOfTweets("./tweetsArchive/miya-archive.json"),await randomArrayOfTweets("./tweetsArchive/UnkleDell.json","nigga"));
+    let shuffled = await combineAndShuffle(await randomArrayOfTweets("./tweetsArchive/HpdDaily.json","Drake"),await randomArrayOfTweets("./tweetsArchive/waters/retardangel.json"));
 
     console.log(1,shuffled);
   
      const GPT35TurboMessage = [
       { role: "system", content: `
-      You are a helpful assistant tasked with producing quality shitposts for the user.\n
-      The definition of the word shitpost is: In Internet culture, shitposting is the act of using an online forum or social media page to post content that is satirical and of "aggressively, ironically, and trollishly poor quality", an online analog of trash talk. Shitposts are intentionally designed to derail discussions or cause the biggest reaction with the least effort. Shitposts never contain hashtags.` },
+      The definition of the word shitpost is: In Internet culture, shitposting is the act of using an online forum or social media page to post content that is satirical and of "aggressively, ironically, and trollishly poor quality", an online analog of trash talk. Shitposts are intentionally designed to derail discussions or cause the biggest reaction with the least effort. Shitposts never contain hashtags.
+      You are an humorous AI designed to write tweets given a set of examples.\n` },
       {
         role: "user",
-        content: `Given the sample set of tweets provided below, use the contents from between 2 to 5 tweets as source material to write 1 original shitpost.
+        content: `Given the sample set of tweets provided below, use the material and stylometry from between 2 to 3 tweets to draw inspiration to write 1 original shitpost.
          The shitpost should be between 7 to 30 words in length.
-          It must be completely lowercase, not contain ANY hashtags, and not be incoherent.
+          It must be completely lowercase, not contain ANY hashtags, or be nonsensical.\n
+          The shitpost must make sense and come from your head.\n
   
          `+'Sample tweets:\n'+JSON.stringify(shuffled)
       },
     ];
 
     let generated = removeHashtags(await GPT35Turbo(GPT35TurboMessage));
+    console.log("--------------------------------------");
 
     console.log("Howl says: ", generated);
     await makeATweet(generated);
