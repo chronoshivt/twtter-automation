@@ -1,21 +1,31 @@
-console.log("Property of:");
-const puppeteer = require("puppeteer");
+// Puppeteer config
+// const puppeteer = require("puppeteer");
+const readline = require('readline');
+// Stealth attachments
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
+
+// Other config
+const Util = require("./Util.js");
 const fs = require("fs").promises;
 const asciify = require("asciify");
 require("dotenv").config();
-// GPT 3 stuff
-const api_key = process.env.API_KEY;
-
-const { Configuration, OpenAIApi } = require("openai");
 const autowrong = require("autowrong");
 
-const Util = require("./Util.js");
+// OpenAI config
+const api_key = process.env.API_KEY;
+const { Configuration, OpenAIApi } = require("openai");
 
-asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
+console.log("Property of:");
+asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res) {
   console.log(res);
 });
 
 (async () => {
+
+  const proxy = Util.rotateProxies("./proxies/proxies.txt");
+// Launch browser
   console.time("whole task");
   const browser = await puppeteer.launch({
     headless: false,
@@ -25,7 +35,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
     },
     args: [
       `--user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148`,
-
+      `--proxy-server=${proxy.ipPort}`,
       `--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36`,
       `--window-size=800,600`,
       "--no-sandbox",
@@ -54,18 +64,27 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
 '--disable-application-cache',
 '--disable-offline-load-stale-cache',
 '--disable-gpu-shader-disk-cache',
-'--media-cache-size=0',
-'--disk-cache-size=0',
     ],
   });
   const page = await browser.newPage();
+  await page.setDefaultNavigationTimeout(0);
 
   // Setting cookies for each account to avoid having to relog into Twitter.
   const cookieString = await fs.readFile("./cookies/howl-cookies.json");
   const cookies = JSON.parse(cookieString);
   await page.setCookie(...cookies);
+  // Connect to proxy
+  await page.authenticate({
+    username: proxy.user,
+    password: proxy.pass,
+    });
+  await Util.goToPage(page, "about:blank");
 
-  await Util.goToPage(page, "https://google.com/");
+// OpenAI config
+  const configuration = new Configuration({
+    apiKey: api_key,
+  });
+  const openai = new OpenAIApi(configuration);
 
   // Sign into Twitter. Only needs to be done once per cookies.
   async function signIn() {
@@ -106,7 +125,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
     console.timeEnd("make a tweet");
     console.log("Tweeted out: " + tweet);
     await Util.waitFor(3000);
-    await Util.goToPage(page, "https://google.com/");
+    await Util.goToPage(page, "about:blank");
     return;
   }
 
@@ -162,8 +181,10 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
   // @params String -  Name of file to write tweets to.
   async function farmTweets(handles, file) {
     function printProgress(progress) {
-      process.stdout.clearLine();
-      process.stdout.cursorTo(0);
+      // process.stdout.clearLine();
+      // process.stdout.cursorTo(0);
+      readline.clearLine(process.stdout, 0)
+      readline.cursorTo(process.stdout, 0)
       process.stdout.write("Farmed " + progress + " tweets so far.");
     }
     var totalTweetsFarmed = 0;
@@ -273,6 +294,7 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
     return tweetsArr;
   }
 
+  // Make tweet stylometry cute :3
   function cutify(tweet) {
     var cutied = "";
     var res = "";
@@ -377,7 +399,9 @@ asciify("nean", { font: "jazmine", color: "red" }, function (err, res) {
         );
       });
   }
-async function combineAndShuffle(arr1, arr2) {
+
+// Combine two sets of tweets and shuffle them.
+  async function combineAndShuffle(arr1, arr2) {
 
   const combinedArray = arr1.concat(arr2).map((element, index) => `tweet #${index}: ${element}`);
   for (let i = combinedArray.length - 1; i > 0; i--) {
@@ -388,65 +412,53 @@ async function combineAndShuffle(arr1, arr2) {
   return stringTweets;
 
 }
-  
+
+// Remove hashtags from a string
+function removeHashtags(str) {
+  return str.replace(/#[\w\d-]+/gi, '');
+}
+
+
 // Farming UnkleDell tweets
-
 // let farmArr = [
-//   "UnkleDell"
-// ]
-
-//   await farmTweets(farmArr,"UnkleDell.json");
-
-
-
-  const configuration = new Configuration({
-    apiKey: api_key,
-  });
-  const openai = new OpenAIApi(configuration);
+//   "SCHIZO_FREQ",
+//   "unkledell"
+// ];
+// await farmTweets(farmArr,"profit.json");
 
 
- 
-  // add humor explanation
-  // Also provide the tweet numbers from which material was sourced from to produce the shitpost and
-  // the possible humor of it.\n
-  // Give me the response in the following format:\n
-  // shitpost:\n
-  function removeHashtags(str) {
-    return str.replace(/#[\w\d-]+/gi, '');
-  }
-  
-  let GPT35Turbo = async (message) => {
+  let GPT4Turbo = async (message) => {
     const response = await openai.createChatCompletion({
       model: "gpt-4",
       messages: message,
     });
-  
     return response.data.choices[0].message.content;
   };
-  // console.log("-----------------------")
-  // console.log("GPT3.5-TURBO says: ", await GPT35Turbo(GPT35TurboMessage));
+
+
   for (let index = 0; index < 14; index++) {
 
-    let shuffled = await combineAndShuffle(await randomArrayOfTweets("./tweetsArchive/HpdDaily.json","Drake"),await randomArrayOfTweets("./tweetsArchive/waters/retardangel.json"));
+    let shuffled = await combineAndShuffle(await randomArrayOfTweets("./tweetsArchive/profit.json"),await randomArrayOfTweets("./tweetsArchive/waters/retardangel.json"));
 
     console.log(1,shuffled);
   
      const GPT35TurboMessage = [
       { role: "system", content: `
-      The definition of the word shitpost is: In Internet culture, shitposting is the act of using an online forum or social media page to post content that is satirical and of "aggressively, ironically, and trollishly poor quality", an online analog of trash talk. Shitposts are intentionally designed to derail discussions or cause the biggest reaction with the least effort. Shitposts never contain hashtags.
-      You are an humorous AI designed to write tweets given a set of examples.\n` },
+      The definition of the word shitpost is: In Internet culture, shitposting is the act of using an online forum or social media page to post content that is satirical and of "aggressively, ironically, and trollishly poor quality", an online analog of trash talk.
+      Shitposts are intentionally designed to derail discussions or cause the biggest reaction with the least effort. Shitposts never contain hashtags.
+      You are a humorous AI designed to write shitposts.\n` },
       {
         role: "user",
-        content: `Given the sample set of tweets provided below, use the material and stylometry from between 2 to 3 tweets to draw inspiration to write 1 original shitpost.
+        content: `Given the sample set of tweets provided below, use the stylometry from between 2 to 3 tweets to write 1 original shitpost.
          The shitpost should be between 7 to 30 words in length.
-          It must be completely lowercase, not contain ANY hashtags, or be nonsensical.\n
-          The shitpost must make sense and come from your head.\n
+          It must be completely lowercase, not contain ANY hashtags.\n
+          The shitpost must not be and come from your head after reading the example set.\n
   
          `+'Sample tweets:\n'+JSON.stringify(shuffled)
       },
     ];
 
-    let generated = removeHashtags(await GPT35Turbo(GPT35TurboMessage));
+    let generated = removeHashtags(await GPT4Turbo(GPT35TurboMessage));
     console.log("--------------------------------------");
 
     console.log("Howl says: ", generated);
