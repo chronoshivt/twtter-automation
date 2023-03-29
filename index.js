@@ -16,6 +16,7 @@ const autowrong = require("autowrong");
 // OpenAI config
 const api_key = process.env.API_KEY;
 const { Configuration, OpenAIApi } = require("openai");
+const { sign } = require('crypto');
 
 console.log("Property of:");
 asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res) {
@@ -24,7 +25,12 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
 
 (async () => {
 
-  const proxy = Util.rotateProxies("./proxies/proxies.txt");
+  // const proxy = Util.rotateProxies("./proxies/proxies.txt");
+  const proxy = {
+    ipPort:"gw.thunderproxies.net:5959",
+    user:"UOwa2ljaLBt8hmhLX5-dc-US",
+    pass:"N3e4t3FzGtVRym1A0t"
+  }
 // Launch browser
   console.time("whole task");
   const browser = await puppeteer.launch({
@@ -79,6 +85,7 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
     password: proxy.pass,
     });
   await Util.goToPage(page, "about:blank");
+  await Util.goToPage(page, "https://chronoshivt.com");
 
 // OpenAI config
   const configuration = new Configuration({
@@ -112,7 +119,7 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
     await Util.waitFor(300);
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
-    // await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
     await Util.waitFor(500);
     await page.keyboard.type(tweet, {
       delay: 125,
@@ -418,7 +425,7 @@ function removeHashtags(str) {
   return str.replace(/#[\w\d-]+/gi, '');
 }
 
-
+// await signIn();
 // Farming UnkleDell tweets
 // let farmArr = [
 //   "SCHIZO_FREQ",
@@ -446,13 +453,14 @@ function removeHashtags(str) {
       { role: "system", content: `
       The definition of the word shitpost is: In Internet culture, shitposting is the act of using an online forum or social media page to post content that is satirical and of "aggressively, ironically, and trollishly poor quality", an online analog of trash talk.
       Shitposts are intentionally designed to derail discussions or cause the biggest reaction with the least effort. Shitposts never contain hashtags.
-      You are a humorous AI designed to write shitposts.\n` },
+      You are a ruthless, all-knowing AI designed to write shitposts.\n` },
       {
         role: "user",
-        content: `Given the sample set of tweets provided below, use the stylometry from between 2 to 3 tweets to write 1 original shitpost.
-         The shitpost should be between 7 to 30 words in length.
+        content: `Given the sample set of tweets provided below, use the stylometry and content from 2-3 random tweets in the set to draw meaningful observations and write 1 original shitpost.
+        Iterate as many times until there is a shitpost that will appeal to the most people and get the most likes.\n
+        The shitpost should be between 7 to 30 words in length.
           It must be completely lowercase, not contain ANY hashtags.\n
-          The shitpost must not be and come from your head after reading the example set.\n
+          Do not be too random as too not make sense, and the shitpost must come from your head after reading the example set.\n
   
          `+'Sample tweets:\n'+JSON.stringify(shuffled)
       },
