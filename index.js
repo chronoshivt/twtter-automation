@@ -1,37 +1,69 @@
+const readline = require("readline");
 // Puppeteer config
-// const puppeteer = require("puppeteer");
-const readline = require('readline');
 // Stealth attachments
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+// const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 puppeteer.use(StealthPlugin());
+// langchain config
+const { OpenAI } = require("langchain/llms/openai");
+const { PromptTemplate } = require("langchain/prompts");
+const { HNSWLib } = require("langchain/vectorstores/hnswlib");
+const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
+const { CharacterTextSplitter } = require("langchain/text_splitter");
 
 // Other config
-const Util = require("./Util.js");
+const cheerio = require("cheerio");
 const fs = require("fs").promises;
+const Util = require("./Util.js");
 const asciify = require("asciify");
 require("dotenv").config();
 const autowrong = require("autowrong");
+const inquirer = require("inquirer");
 
 // OpenAI config
-const api_key = process.env.API_KEY;
 const { Configuration, OpenAIApi } = require("openai");
-const { sign } = require('crypto');
-
-console.log("Property of:");
-asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res) {
-  console.log(res);
+const api_key = process.env.API_KEY;
+const configuration = new Configuration({
+  apiKey: api_key,
 });
+const openai = new OpenAIApi(configuration);
+const model = new OpenAI({
+  openAIApiKey: api_key,
+  temperature: 0.9,
+});
+// let GPT4Turbo = async (message) => {
+//   const response = await openai.createChatCompletion({
+//     model: "gpt-4",
+//     messages: message,
+//   });
+//   return response.data.choices[0].message.content;
+// };
+console.log("Property of:");
+asciify(
+  "O_o Research",
+  { font: "jazmine", color: "cyan" },
+  function (err, res) {
+    console.log(res);
+  }
+);
 
+const agent_states = {
+  initial: "initial",
+  perceiving: "perceiving",
+  memory: "memory",
+  acting: "acting",
+};
+let agentState = agent_states.initial;
 (async () => {
-
+  // Configure proxy
   // const proxy = Util.rotateProxies("./proxies/proxies.txt");
   const proxy = {
-    ipPort:"gw.thunderproxies.net:5959",
-    user:"UOwa2ljaLBt8hmhLX5-dc-US",
-    pass:"N3e4t3FzGtVRym1A0t"
-  }
-// Launch browser
+    ipPort: "gw.thunderproxies.net:5959",
+    user: "H7ZLEvd4oUxuskm5H5-res_sc-US_ILLINOIS",
+    pass: "rdA9xtg2qfcZAg1uwT",
+  };
+  // Launch browser
   console.time("whole task");
   const browser = await puppeteer.launch({
     headless: false,
@@ -65,54 +97,387 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
       "--disable-component-update",
       "--disable-domain-reliability",
       "--disable-sync",
-      '--aggressive-cache-discard',
-'--disable-cache',
-'--disable-application-cache',
-'--disable-offline-load-stale-cache',
-'--disable-gpu-shader-disk-cache',
+      "--aggressive-cache-discard",
+      "--disable-cache",
+      "--disable-application-cache",
+      "--disable-offline-load-stale-cache",
+      "--disable-gpu-shader-disk-cache",
     ],
   });
   const page = await browser.newPage();
   await page.setDefaultNavigationTimeout(0);
-
   // Setting cookies for each account to avoid having to relog into Twitter.
   const cookieString = await fs.readFile("./cookies/howl-cookies.json");
   const cookies = JSON.parse(cookieString);
   await page.setCookie(...cookies);
-  // Connect to proxy
+  // // Connect to proxy
   await page.authenticate({
     username: proxy.user,
     password: proxy.pass,
-    });
-  await Util.goToPage(page, "about:blank");
-  await Util.goToPage(page, "https://chronoshivt.com");
-
-// OpenAI config
-  const configuration = new Configuration({
-    apiKey: api_key,
   });
-  const openai = new OpenAIApi(configuration);
+  await Util.goToPage(page, "about:blank");
+  await Util.goToPage(page, "https://www.whatismyip.com/proxy-check/");
 
-  // Sign into Twitter. Only needs to be done once per cookies.
-  async function signIn() {
-    // Login
-    console.time("signin");
-    await Util.goToPage(page, "https://twitter.com/login");
-    await page.type('div [autocomplete="username"]', "HOWLSMOVLNG");
-    await Util.waitFor(4000);
-    page.keyboard.press("Enter");
-    await Util.waitFor(3000);
-    await page.type('div [name="password"]', "getItGwizted72");
-    await Util.waitFor(4000);
-    page.keyboard.press("Enter");
-    await page.waitForNavigation({ timeout: 120000 });
+  // Blank slate
+  // -----------------
 
-    console.timeEnd("signin");
-
-    return;
+  const MAX_ITERATIONS = 4;
+  var memory_blob;
+  var ACTION_EXECUTING;
+  let mission =
+    "I want to grow my twitter following, and make friends as well as troll users.";
+  if (agentState === "initial") {
+    console.log("mission:", mission);
+    if (mission) {
+      agentState = agent_states.perceiving;
+    }
+    // return;
+  }
+  // start state loop
+  let i = 0;
+  while (
+    i < MAX_ITERATIONS &&
+    (agentState !== null || agentState !== "initial")
+  ) {
+    console.log(`Global: Current state: ${agentState}`);
+    i++;
+    switch (agentState) {
+      case agent_states.perceiving:
+        console.log("Currently PERCEIVING...");
+        memory_blob = await perceive();
+        break;
+      case agent_states.memory:
+        // await this.logout();
+        console.log("Currently accessing MEMORY...");
+        // console.log("mem_blbo:", memory_blob);
+        ACTION_EXECUTING = await memory(memory_blob, mission);
+        memory_blob = null;
+        break;
+      case agent_states.acting:
+        console.log("Currently executing an ACTION...");
+        await act(ACTION_EXECUTING, mission);
+        ACTION_EXECUTING = null;
+        // await this.logout();
+        break;
+    }
   }
 
-  // Makes a tweet
+  async function perceive() {
+    // GET ALL RELEVANT ENVIRONMENT INFORMATION TO THE AGENT
+    var notifications;
+    var status;
+    var dms;
+    // Make into memory stream string format
+
+    // THE TIMELINE
+    var the_timeline = "The following is a set of memories as the user:\n";
+    var scroll = await scroll_the_timeline(1);
+    var tweet_mem_string = "";
+    scroll.forEach(function (tw) {
+      var when = Util.determineFormatAndReturnWithSuffix(tw["time"]);
+      the_timeline += `[${tw["date"]}]- USER: ${tw["author"]} POSTED: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]} \n---\n`;
+    });
+    // the_timeline = `${tweet_mem_string}`;
+    // Build memory stream programmatically
+    var memory_stream = {
+      timeline: the_timeline,
+    };
+
+    // console.log(memory_stream);
+    // Check for situation?
+    agentState = agent_states.memory;
+    return memory_stream;
+  }
+  // returns memory stream segments
+  async function memory(memory_blob, mission, situation) {
+    // Take in action rewards+ env state summary?
+
+    var background =
+      "I am a kawaii 19 year old 4chan user. I want to become an artist. I like electronic and experimental music.";
+    if (!memory_blob) return "No Memory_blob provided to memory.";
+    // console.log("MEMORIES/EVENTS:", memory_blob);
+    const splitter = new CharacterTextSplitter({
+      separator: "\n---\n",
+      chunkSize: 256,
+      chunkOverlap: 64,
+    });
+    const docs = await splitter.createDocuments([memory_blob["timeline"]]);
+
+    const directory = "./memory_stream";
+    // const vectorStore = await HNSWLib.fromTexts(
+    //   [memory_blob["timeline"]],
+    //   [{ id: "memory_stream_" + Util.getCurrentDateTime() }],
+    //   new OpenAIEmbeddings()
+    // );
+    // // Save the vector store to a directory
+
+    // Load the vector store from the same directory
+    const loadedVectorStore = await HNSWLib.load(
+      directory,
+      new OpenAIEmbeddings()
+    );
+    // vectorStore and loadedVectorStore are identical
+    var situation = "";
+
+    const prompt = new PromptTemplate({
+      template: `Use the provided user bio to extract 10 keywords from the 
+      provided text titled B. Only return keywords found in Text B.
+      Order the keywords from most relevant to least relevant. 
+      Do not include words used in the user bio.
+
+      User bio:{background}
+      Text B:{memory_blob}
+
+      Response format:
+      <10 keywords>`,
+      inputVariables: ["background", "memory_blob"],
+    });
+
+    var situation_prompt = await prompt.format({
+      background: background,
+      memory_blob: memory_blob["timeline"],
+    });
+    var situation_response = await model.call(situation_prompt);
+    console.log("situation keywords", situation_response);
+    // Retrieval function here
+    // Retrieval(situation) returns memory stream segment relevant to situation
+    // Pass to ranking prompt
+
+    const memory_retrieval = await loadedVectorStore.similaritySearch(
+      situation_response,
+      2
+    );
+    console.log("result from memory QUERY:", memory_retrieval);
+    var memory_ranking_string = "";
+    var retrieved_memories = {};
+
+    // const vectorStore = await HNSWLib.load(directory, new OpenAIEmbeddings());
+    // // Load the docs into the vector store
+    const updateMemories = await loadedVectorStore.addDocuments(docs);
+    if (updateMemories)
+      console.log("STORED UPDATED MEMORIES..", updateMemories);
+    await loadedVectorStore.save(directory);
+
+    var i = 0;
+    memory_retrieval.forEach(function (mem) {
+      i++;
+      memory_ranking_string +=
+        "mem_id " + i + ": " + mem["pageContent"] + "\n---\n";
+      retrieved_memories[i] = {
+        memories: mem["pageContent"],
+        mem_id: i,
+      };
+    });
+    console.log(memory_ranking_string);
+    const prompt2 = new PromptTemplate({
+      template: `Using the provided user bio and situation, analyze each of the 
+      provided memories and give each of them a relevance, and importance score:
+
+      Relevance is how pertinent the memory is to the given situation. Rate from
+      0.00 to 1. With 0.00 being completely irrelevant to 1 being directly 
+      about the topic.
+
+      Importance is how important the memory is to the user in context with
+      their bio and slightely less taking into account the situation. Rate from 
+      1 - 10. 1 being extremely mundane to 10 being extremely poignant.
+
+      User bio:{background},
+      Situation:{situation},
+
+      Memories:{memories}
+
+      The response should an array containing objects.
+      Only respond with a raw parse-able array full of JSON string objects:
+        "memory":<mem_id number only>,
+        "relevance":<0.00 to 1>,
+        "importance":<1 to 10>`,
+      inputVariables: ["memories", "background", "situation"],
+    });
+
+    var retrieval_prompt = await prompt2.format({
+      memories: memory_ranking_string,
+      background: background,
+      situation: mission,
+    });
+
+    var retrieval_ranking = await model.call(retrieval_prompt);
+    console.log("retrieval ranking:", retrieval_ranking);
+
+    // Map ratings to retrieved memories
+    JSON.parse(retrieval_ranking).forEach(function (ranking) {
+      retrieved_memories[ranking["memory"]]["relevance"] = ranking["relevance"];
+      retrieved_memories[ranking["memory"]]["importance"] =
+        ranking["importance"];
+    });
+    var SEND_TO_ACTION = {
+      situation_blob: memory_blob["timeline"],
+      retrieved_memories: retrieved_memories,
+      context: mission,
+      reflection: "",
+      planning: "",
+    };
+    console.log("ENYA:", SEND_TO_ACTION);
+
+    // Make higher level planning
+
+    // Make reflections
+    const reflection_prompt = new PromptTemplate({
+      template: `
+      You are an AI social media account user tasked with running a character's account
+      to have realistic interactions and persona.
+      Using the provided context and the past memory stream do the following things:
+      
+      a. Reflect abstractly on the situation in context with past memories and make note of
+      emotions, relationships with others, and goals. Reflections should be in first person,
+      and take into consideration things important to the character as well as relationships.
+      Append a Japanese kaomoji emoticon that describes the thought at the end of each.
+
+      Context:{situation}
+      Memories:{retrieved_memories}
+      Background:{background}
+
+      Use this response format only, 1 short paragraph each:
+      THOUGHTS: <low level inner thoughts>,
+      REFLECTIONS: <abstract high level and situational reflections>,
+      REASONING: <reasoning for reflections, conclusions, feelings, emotions>
+      CRITICISM: <criticisms of self, behavior, relationship etc.>
+      PLANNING: <exploration of future short term and long term plans and goals>,
+        `,
+      inputVariables: ["situation", "retrieved_memories", "background"],
+    });
+    var reflections = await reflection_prompt.format({
+      situation: memory_blob["timeline"],
+      retrieved_memories: retrieved_memories,
+      background: background,
+    });
+    let AGENT_REFLECTIONS = await model.call(reflections);
+
+    // Higher level planning
+    const planning_prompt = new PromptTemplate({
+      template: `
+      You are an AI social media account user tasked with running a character's account
+      to have realistic interactions and persona. Write all responses in first person view of the character.
+      Using the provided context and the past memory stream do the following things:
+      
+      a. Using the provided context, memories, and background texts,
+      write, add, or change both long term and short term plans for the
+      charcter to accomplish their goals. Plans should take into account
+      past plans, as well as interactions, the context, and memories relevant to
+      the characters goals. Take into account relevance and importance of memories to the character.
+
+      Long term goals and plans can be more abstract and vague.
+      Long term plans/goal examples: "Tweet more about x topic",
+
+      Short term plans should be 1 or 2 immediate and actionable and are usually situational in response to the context. Be specific.
+      Short term plan examples: "Respond to user @JohnDoe 'Thanks for the feedack!' ", "Tweet <x> opinion. ", "Retweet post <x> by user <y>"
+
+      Context:{situation}
+      Past Memories:{retrieved_memories}
+      Character Background:{background}
+      Use this response format only, 1 short paragraph each:
+      LONG_TERM:<long term plan and/or goals the character has>,
+      SHORT_TERM:<short term plan the character intends to execute>
+        `,
+      inputVariables: ["situation", "retrieved_memories", "background"],
+    });
+    var future_plans = await planning_prompt.format({
+      situation: memory_blob["timeline"],
+      retrieved_memories: retrieved_memories,
+      background: background,
+    });
+    let AGENT_PLANNING = await model.call(future_plans);
+    // Send to action
+    // console.log("memory_planning_PROMPT", planning);
+    // console.log("memory_planning", action);
+    SEND_TO_ACTION["reflection"] = AGENT_REFLECTIONS;
+    SEND_TO_ACTION["planning"] = AGENT_PLANNING;
+
+    // console.log("planning", AGENT_PLANNING, "reflections", AGENT_REFLECTIONS);
+    agentState = agent_states.acting;
+    return SEND_TO_ACTION;
+    // Plan next tasks, plan next action. Make sure to re - evaluate.
+  }
+
+  async function act(data, mission) {
+    // Check for continuous mode
+    // If yes, continue to action
+    // If no, ask for user input. Return to memory with user input.
+    // Begin action,
+    //
+    var { situation_blob, retrieved_memories, context, reflection, planning } =
+      data;
+    const prompt = new PromptTemplate({
+      template: `
+      You are an AI roleplaying as a character and making decisions based
+      on the provided information to execute actions.
+
+      This what each set of provided information means and how it should be taken into account
+      when evaluating which action to take. If the action is interacting with a tweet, make sure provide the link
+      in your response.
+
+      Context-This is an event stream of the characters current state and situation.
+      Planning-These are short term and long term plans the character has made towards
+      their goal. The short term plan should be taken into heavy consideration when 
+      deciding an action.
+      Reflections-These are reflections the character has made based on the current
+      context.
+      Memories-These are memories stored in the characters head relevant to the situation,
+      rated by relevance and importance. 
+        'importance' is how impactful the memory is to the characters life, goals, and relationships
+        'relevance' is how pertinent the memory is to the current situation.
+      Use these ratings when considering memories to reference in final action evaluation.
+
+      Context:{situation_blob}
+      Planning:{planning}
+      Reflections:{reflection}
+      Memories: {retrieved_memories}
+      Current mission:{mission}
+
+      Choose from the following actions and provide it's needed parameters in < > :
+        ACTIONS: [
+          Tweet <string>,
+          Retweet <tweet's link> tweet,
+          Like <tweet's link> tweet,
+          Reply to thread <tweet's link> string,
+          Follow/Unfollow user <user @>
+        ],
+        Format of the response:
+        ACTION: <action+params>, REASONING: <reasoning>, EXPECTED REWARD: <expected reward>
+        `,
+      inputVariables: [
+        "situation_blob",
+        "planning",
+        "reflection",
+        "retrieved_memories",
+        "mission",
+      ],
+    });
+
+    const action_prompt = await prompt.format({
+      situation_blob: situation_blob,
+      planning: planning,
+      reflection: reflection,
+      retrieved_memories: retrieved_memories,
+      mission: mission,
+    });
+
+    var ACTION_RESPONSE = await model.call(action_prompt);
+    console.log("ACTION RESPONSE:", ACTION_RESPONSE);
+    inquirer
+      .prompt([
+        {
+          name: "pizza_crust",
+          type: "list",
+          message: "Choose your crust:",
+          choices: ["Thin Crust", "Stuffed Crust", "Pan"],
+        },
+      ])
+      .then((answer) => {
+        console.log(answer.pizza_crust);
+      });
+    // Gather immediate results, create expected results here????
+  }
+
   async function makeATweet(tweet) {
     console.time("make a tweet");
     await Util.goToPage(page, "https://twitter.com/compose/tweet");
@@ -133,6 +498,32 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
     console.log("Tweeted out: " + tweet);
     await Util.waitFor(3000);
     await Util.goToPage(page, "about:blank");
+    return;
+  }
+
+  async function basicRetweet(tweet) {}
+
+  async function quoteTweet(tweet, quote) {}
+
+  async function likeTweet(tweet) {}
+
+  // -------------------------
+  // Sign into Twitter. Only needs to be done once per cookies.
+  async function signIn() {
+    // Login
+    console.time("signin");
+    await Util.goToPage(page, "https://twitter.com/login");
+    await page.type('div [autocomplete="username"]', "HOWLSMOVLNG");
+    await Util.waitFor(4000);
+    page.keyboard.press("Enter");
+    await Util.waitFor(3000);
+    await page.type('div [name="password"]', "getItGwizted72");
+    await Util.waitFor(4000);
+    page.keyboard.press("Enter");
+    await page.waitForNavigation({ timeout: 120000 });
+
+    console.timeEnd("signin");
+
     return;
   }
 
@@ -190,8 +581,8 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
     function printProgress(progress) {
       // process.stdout.clearLine();
       // process.stdout.cursorTo(0);
-      readline.clearLine(process.stdout, 0)
-      readline.cursorTo(process.stdout, 0)
+      readline.clearLine(process.stdout, 0);
+      readline.cursorTo(process.stdout, 0);
       process.stdout.write("Farmed " + progress + " tweets so far.");
     }
     var totalTweetsFarmed = 0;
@@ -368,7 +759,7 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
           continue;
         }
         randomnessArr.push(randomNumber);
-        randomTweets.push(tweets[randomNumber]+"\n");
+        randomTweets.push(tweets[randomNumber] + "\n");
       }
     });
 
@@ -407,77 +798,100 @@ asciify("nean Research", { font: "jazmine", color: "cyan" }, function (err, res)
       });
   }
 
-// Combine two sets of tweets and shuffle them.
+  // Combine two sets of tweets and shuffle them.
   async function combineAndShuffle(arr1, arr2) {
-
-  const combinedArray = arr1.concat(arr2).map((element, index) => `tweet #${index}: ${element}`);
-  for (let i = combinedArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [combinedArray[i], combinedArray[j]] = [combinedArray[j], combinedArray[i]];
+    const combinedArray = arr1
+      .concat(arr2)
+      .map((element, index) => `tweet #${index}: ${element}`);
+    for (let i = combinedArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [combinedArray[i], combinedArray[j]] = [
+        combinedArray[j],
+        combinedArray[i],
+      ];
+    }
+    let stringTweets = combinedArray.join("\n");
+    return stringTweets;
   }
-  let stringTweets = combinedArray.join("\n");
-  return stringTweets;
 
-}
+  function parseHTML(htmlString) {
+    // Create a new DOM parser
+    var parser = new DOMParser();
 
-// Remove hashtags from a string
-function removeHashtags(str) {
-  return str.replace(/#[\w\d-]+/gi, '');
-}
+    // Parse the HTML string into a document object
+    var doc = parser.parseFromString(htmlString, "text/html");
 
-// await signIn();
-// Farming UnkleDell tweets
-// let farmArr = [
-//   "SCHIZO_FREQ",
-//   "unkledell"
-// ];
-// await farmTweets(farmArr,"profit.json");
+    // Get all nodes in the document body
+    var nodes = doc.body.getElementsByTagName("*");
 
+    // Create an array to hold the output
+    var output = [];
 
-  let GPT4Turbo = async (message) => {
-    const response = await openai.createChatCompletion({
-      model: "gpt-4",
-      messages: message,
+    // Iterate over all nodes
+    for (var i = 0; i < nodes.length; i++) {
+      // Only process nodes with text content (excluding whitespace)
+      if (nodes[i].textContent.trim().length > 0) {
+        // Create an object with the tag name and text content and add it to the array
+        output.push({
+          tag: nodes[i].tagName,
+          text: nodes[i].textContent.trim(),
+        });
+      }
+    }
+
+    // Return the array of objects
+    return output;
+  }
+  // Remove hashtags from a string
+  function removeHashtags(str) {
+    return str.replace(/#[\w\d-]+/gi, "");
+  }
+
+  async function scroll_the_timeline(amount) {
+    if (!amount) return "Error: No amount to scroll provided";
+    await Util.goToPage(page, "https://twitter.com/");
+    var tweetArr = [];
+    for (let index = 0; index < amount; index++) {
+      var tweetsBuffer = tweetArr;
+      var thisScrolltweets = await page.$$eval("article", (tweets) => {
+        return tweets.map((tweet) => {
+          return {
+            text: tweet.textContent,
+            innerHTML: tweet.innerHTML,
+          };
+        });
+      });
+      tweetArr = tweetsBuffer.concat(thisScrolltweets);
+      await Util.waitFor(3000);
+      await page.evaluate(() => {
+        window.scrollBy(0, window.innerHeight);
+        window.scrollBy(0, window.innerHeight);
+        window.scrollBy(0, window.innerHeight);
+        window.scrollBy(0, window.innerHeight);
+        window.scrollBy(0, window.innerHeight);
+        window.scrollBy(0, window.innerHeight);
+      });
+    }
+    var formatted_tweets = [];
+    var now = Util.getCurrentDateTime();
+    tweetArr.forEach(function (tweet_mess) {
+      const $ = cheerio.load(tweet_mess.innerHTML);
+      const yipee = {
+        tweet: $("div[lang]").text(),
+        author: $('div[data-testid="User-Name"] span').text(),
+        time: $("time").text(),
+        likes: $('div[data-testid="like"]').text(),
+        retweets: $('div[data-testid="reply"]').text(),
+        is_a_retweet: $('span[data-testid="socialContext"]').text(),
+        date: now,
+        link: $('div[data-testid="User-Name"] a[dir="ltr"]').attr("href"),
+      };
+      formatted_tweets.push(yipee);
     });
-    return response.data.choices[0].message.content;
-  };
-
-
-  for (let index = 0; index < 14; index++) {
-
-    let shuffled = await combineAndShuffle(await randomArrayOfTweets("./tweetsArchive/profit.json"),await randomArrayOfTweets("./tweetsArchive/waters/retardangel.json"));
-
-    console.log(1,shuffled);
-  
-     const GPT35TurboMessage = [
-      { role: "system", content: `
-      The definition of the word shitpost is: In Internet culture, shitposting is the act of using an online forum or social media page to post content that is satirical and of "aggressively, ironically, and trollishly poor quality", an online analog of trash talk.
-      Shitposts are intentionally designed to derail discussions or cause the biggest reaction with the least effort. Shitposts never contain hashtags.
-      You are a ruthless, all-knowing AI designed to write shitposts.\n` },
-      {
-        role: "user",
-        content: `Given the sample set of tweets provided below, use the stylometry and content from 2-3 random tweets in the set to draw meaningful observations and write 1 original shitpost.
-        Iterate as many times until there is a shitpost that will appeal to the most people and get the most likes.\n
-        The shitpost should be between 7 to 30 words in length.
-          It must be completely lowercase, not contain ANY hashtags.\n
-          Do not be too random as too not make sense, and the shitpost must come from your head after reading the example set.\n
-  
-         `+'Sample tweets:\n'+JSON.stringify(shuffled)
-      },
-    ];
-
-    let generated = removeHashtags(await GPT4Turbo(GPT35TurboMessage));
-    console.log("--------------------------------------");
-
-    console.log("Howl says: ", generated);
-    await makeATweet(generated);
-    var waitingFor = Util.aLongTime();
-    console.log(
-      "Waiting for " + waitingFor / 60000 + " minutes before tweeting again."
-    );
-    await Util.waitFor(waitingFor);
+    return formatted_tweets;
   }
 
+  async function feed_data() {}
 
   await browser.close();
   console.timeEnd("whole task");
