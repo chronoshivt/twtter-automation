@@ -100,10 +100,24 @@ function determineFormatAndReturnWithSuffix(str) {
     `Input string "${str}" is neither in 'xs', 'xm', 'xh', 'xd' format nor a valid date.`
   );
 }
+function getStringBetweenDelimiters(source, delimiter1, delimiter2) {
+  var start = source.indexOf(delimiter1);
+  if (start === -1) {
+    return null; // delimiter1 is not in the source
+  }
+  start += delimiter1.length; // start after the first delimiter
 
+  var end = source.indexOf(delimiter2, start);
+  if (end === -1) {
+    return null; // delimiter2 is not in the source after delimiter1
+  }
+
+  return source.substring(start, end); // return the portion of source between the delimiters
+}
 exports.goToPage = goToPage;
 exports.waitFor = waitFor;
 exports.aLongTime = aLongTime;
 exports.rotateProxies = rotateProxies;
 exports.getCurrentDateTime = getCurrentDateTime;
 exports.determineFormatAndReturnWithSuffix = determineFormatAndReturnWithSuffix;
+exports.getStringBetweenDelimiters = getStringBetweenDelimiters;

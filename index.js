@@ -121,6 +121,7 @@ let agentState = agent_states.initial;
   // Blank slate
   // -----------------
 
+  var CONTINOUS_MODE = false;
   const MAX_ITERATIONS = 4;
   var memory_blob;
   var ACTION_EXECUTING;
@@ -170,7 +171,7 @@ let agentState = agent_states.initial;
     // Make into memory stream string format
 
     // THE TIMELINE
-    var the_timeline = "The following is a set of memories as the user:\n";
+    var the_timeline = "Timeline:\n";
     var scroll = await scroll_the_timeline(1);
     var tweet_mem_string = "";
     scroll.forEach(function (tw) {
@@ -178,6 +179,8 @@ let agentState = agent_states.initial;
       the_timeline += `[${tw["date"]}]- USER: ${tw["author"]} POSTED: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]} \n---\n`;
     });
     // the_timeline = `${tweet_mem_string}`;
+
+    if (!the_timeline) return console.error("NO timeline from twitter");
     // Build memory stream programmatically
     var memory_stream = {
       timeline: the_timeline,
@@ -193,8 +196,9 @@ let agentState = agent_states.initial;
     // Take in action rewards+ env state summary?
 
     var background =
-      "I am a kawaii 19 year old 4chan user. I want to become an artist. I like electronic and experimental music.";
-    if (!memory_blob) return "No Memory_blob provided to memory.";
+      "I am an accelerationist 19 year old kawaii girl. I want to become an artist. I like electronic and experimental music.";
+    if (!memory_blob)
+      return console.error("No memory blob provided to memory()");
     // console.log("MEMORIES/EVENTS:", memory_blob);
     const splitter = new CharacterTextSplitter({
       separator: "\n---\n",
@@ -222,14 +226,14 @@ let agentState = agent_states.initial;
     const prompt = new PromptTemplate({
       template: `Use the provided user bio to extract 10 keywords from the 
       provided text titled B. Only return keywords found in Text B.
-      Order the keywords from most relevant to least relevant. 
+      Order the keywords from most relevant to least relevant separated by commas. 
       Do not include words used in the user bio.
 
       User bio:{background}
       Text B:{memory_blob}
 
       Response format:
-      <10 keywords>`,
+      <10 keywords comma separated>`,
       inputVariables: ["background", "memory_blob"],
     });
 
@@ -411,17 +415,17 @@ let agentState = agent_states.initial;
       You are an AI roleplaying as a character and making decisions based
       on the provided information to execute actions.
 
-      This what each set of provided information means and how it should be taken into account
-      when evaluating which action to take. If the action is interacting with a tweet, make sure provide the link
-      in your response.
+      The information provided is defined below and should be considered
+      when evaluating which action to take. If the action is interacting with another tweet, 
+      make sure provide the tweet's link in your response.
 
-      Context-This is an event stream of the characters current state and situation.
+      Context-This is an event stream of the characters current situation and state.
       Planning-These are short term and long term plans the character has made towards
       their goal. The short term plan should be taken into heavy consideration when 
       deciding an action.
       Reflections-These are reflections the character has made based on the current
       context.
-      Memories-These are memories stored in the characters head relevant to the situation,
+      Memories-These are past memories stored in the characters head relevant to the situation,
       rated by relevance and importance. 
         'importance' is how impactful the memory is to the characters life, goals, and relationships
         'relevance' is how pertinent the memory is to the current situation.
@@ -435,14 +439,18 @@ let agentState = agent_states.initial;
 
       Choose from the following actions and provide it's needed parameters in < > :
         ACTIONS: [
-          Tweet <string>,
-          Retweet <tweet's link> tweet,
-          Like <tweet's link> tweet,
-          Reply to thread <tweet's link> string,
-          Follow/Unfollow user <user @>
+          TWEET:<string>,
+          RETWEET:<tweet's link>,
+          QUOTE_TWEET:<tweet's link> $ <quote tweet>,
+          LIKE:<tweet's link>,
+          REPLY:<tweet's link> $ <reply text>,
+          FOLLOW/UNFOLLOW:<user @>
         ],
-        Format of the response:
-        ACTION: <action+params>, REASONING: <reasoning>, EXPECTED REWARD: <expected reward>
+        
+        Return only a raw JSON parse-able object of string keys with their values with
+        following format:
+        Response:
+        {response_format}
         `,
       inputVariables: [
         "situation_blob",
@@ -450,6 +458,7 @@ let agentState = agent_states.initial;
         "reflection",
         "retrieved_memories",
         "mission",
+        "response_format",
       ],
     });
 
@@ -459,23 +468,108 @@ let agentState = agent_states.initial;
       reflection: reflection,
       retrieved_memories: retrieved_memories,
       mission: mission,
+      response_format: `{
+        "ACTION":"<action+params>",
+        "REASONING":"<reasoning>",
+        "EXPECTED_REWARD":"<expected reward>"
+      }`,
     });
-
-    var ACTION_RESPONSE = await model.call(action_prompt);
+    var ACTION_RESPONSE = JSON.parse(await model.call(action_prompt)).split(
+      "Response:"
+    )[1];
     console.log("ACTION RESPONSE:", ACTION_RESPONSE);
-    inquirer
-      .prompt([
-        {
-          name: "pizza_crust",
-          type: "list",
-          message: "Choose your crust:",
-          choices: ["Thin Crust", "Stuffed Crust", "Pan"],
+    const inputQuestions = [
+      {
+        type: "list",
+        name: "user_input",
+        message: "Choose what to do:",
+        choices: ["Confirm Action", "Enter Continous Mode", "Provide Feedback"],
+      },
+      //when choice continous is true, ask this question
+      {
+        type: "input",
+        name: "continous",
+        message: "How many loops to do:",
+        when: (answers) => {
+          if (answers.user_input === "Enter Continous Mode") {
+            return true;
+          }
         },
-      ])
-      .then((answer) => {
-        console.log(answer.pizza_crust);
-      });
+      },
+
+      //when role is intern is true, ask this question
+      {
+        type: "input",
+        name: "feedback",
+        message: "Provide agent feedback:",
+        when: (answers) => {
+          if (answers.user_input === "Provide Feedback") {
+            return true;
+          }
+        },
+      },
+    ];
+    if (CONTINOUS_MODE == false) {
+      var raw_action = ACTION_RESPONSE;
+
+      var INQUIRER_RESP = await inquirer
+        .prompt(inputQuestions)
+        .then((answer) => {
+          console.log("Inquirer responses:", answer);
+          return answer;
+        });
+      console.log("RAW ACTION:", raw_action);
+      if (INQUIRER_RESP.user_input === "Confirm Action") {
+        // execute the action
+        await executor(raw_action);
+      } else if (INQUIRER_RESP.continous) {
+        // Execute action,
+        await executor(raw_action);
+        // set continous mode loops
+        CONTINOUS_MODE = INQUIRER_RESP.continous;
+      } else if (INQUIRER_RESP.feedback) {
+        // format user input,
+        console.log("User returned feedback:" + INQUIRER_RESP.feedback);
+        // Either send input back to memory,
+        // or use it do decide immediate action.
+      }
+    } else {
+      CONTINOUS_MODE--;
+      if (CONTINOUS_MODE == 0) CONTINOUS_MODE = false;
+      console.log("IN CONTINOUS MODE, LOOPS LEFT:" + CONTINOUS_MODE);
+      // execute action
+      await executor(raw_action);
+    }
     // Gather immediate results, create expected results here????
+  }
+
+  async function executor(RawAction) {
+    var action = RawAction.action;
+    var func = action.split(":")[0];
+    var data = action.split(":")[1];
+    if (!func || !data)
+      return "ERROR: Improper or no func or data passed to executor";
+    if (func === "TWEET") {
+      console.log("AGENT TWEETING:" + data);
+      await makeATweet(data);
+    } else if (func === "RETWEET") {
+      console.log("AGENT RETWEETING:" + data);
+      await basicRetweet(data);
+    } else if (func === "QUOTE_TWEET") {
+      console.log("AGENT QUOTE-TWEETING:" + data);
+      let link;
+      let text;
+      await quoteTweet(data);
+    } else if (func === "LIKE") {
+      console.log("AGENT LIKING:" + data);
+      await likeTweet(data);
+    } else if (func === "REPLY") {
+      console.log("AGENT REPLYING:" + data);
+    } else if (func === "FOLLOW" || func === "UNFOLLOW") {
+      console.log("AGENT UNFOLLOWING/FOLLOWING:" + data);
+    }
+
+    // Write action exection to memory;
   }
 
   async function makeATweet(tweet) {
@@ -849,7 +943,7 @@ let agentState = agent_states.initial;
 
   async function scroll_the_timeline(amount) {
     if (!amount) return "Error: No amount to scroll provided";
-    await Util.goToPage(page, "https://twitter.com/");
+    await Util.goToPage(page, "https://twitter.com/home");
     var tweetArr = [];
     for (let index = 0; index < amount; index++) {
       var tweetsBuffer = tweetArr;
@@ -888,6 +982,7 @@ let agentState = agent_states.initial;
       };
       formatted_tweets.push(yipee);
     });
+    // await createCookies("howl-cookies");
     return formatted_tweets;
   }
 
