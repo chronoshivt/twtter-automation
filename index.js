@@ -126,7 +126,7 @@ let agentState = agent_states.initial;
   var memory_blob;
   var ACTION_EXECUTING;
   let mission =
-    "I want to grow my twitter following, and make friends as well as troll users.";
+    "I am a crypto-rich accelerationist 19 year old kawaii girl. I am creative. i like to type in all lowercase and Sometimes capitalize words to be Quirky. i like to troll.";
   if (agentState === "initial") {
     console.log("mission:", mission);
     if (mission) {
@@ -195,8 +195,7 @@ let agentState = agent_states.initial;
   async function memory(memory_blob, mission, situation) {
     // Take in action rewards+ env state summary?
 
-    var background =
-      "I am an accelerationist 19 year old kawaii girl. I want to become an artist. I like electronic and experimental music.";
+    var background = mission
     if (!memory_blob)
       return console.error("No memory blob provided to memory()");
     // console.log("MEMORIES/EVENTS:", memory_blob);
@@ -206,27 +205,41 @@ let agentState = agent_states.initial;
       chunkOverlap: 64,
     });
     const docs = await splitter.createDocuments([memory_blob["timeline"]]);
-
     const directory = "./memory_stream";
+     
+      var loadedVectorStore;
+      const files = await fs.readdir(directory);
+      if (files.length > 0) {
+          console.log('The directory has files.');
+            loadedVectorStore = await HNSWLib.load(
+            directory,
+            new OpenAIEmbeddings()
+          );
+      } else {
+          console.log('The directory is empty.');
+          console.log('VectorStore does not exist');
+          loadedVectorStore = await HNSWLib.fromDocuments(
+          docs,
+          new OpenAIEmbeddings()
+        );
+      }
     // const vectorStore = await HNSWLib.fromTexts(
     //   [memory_blob["timeline"]],
-    //   [{ id: "memory_stream_" + Util.getCurrentDateTime() }],
+    //   [{ id: "docstore_" + Util.getCurrentDateTime() }],
     //   new OpenAIEmbeddings()
     // );
     // // Save the vector store to a directory
 
     // Load the vector store from the same directory
-    const loadedVectorStore = await HNSWLib.load(
-      directory,
-      new OpenAIEmbeddings()
-    );
+    
     // vectorStore and loadedVectorStore are identical
     var situation = "";
 
     const prompt = new PromptTemplate({
       template: `Use the provided user bio to extract 10 keywords from the 
       provided text titled B. Only return keywords found in Text B.
-      Order the keywords from most relevant to least relevant separated by commas. 
+      Order the keywords from most relevant to least relevant separated by commas.
+      Note that the content of the post should be should be more important than user's names when selecting words.
       Do not include words used in the user bio.
 
       User bio:{background}
@@ -320,8 +333,6 @@ let agentState = agent_states.initial;
       reflection: "",
       planning: "",
     };
-    console.log("ENYA:", SEND_TO_ACTION);
-
     // Make higher level planning
 
     // Make reflections
@@ -395,6 +406,13 @@ let agentState = agent_states.initial;
     // console.log("memory_planning", action);
     SEND_TO_ACTION["reflection"] = AGENT_REFLECTIONS;
     SEND_TO_ACTION["planning"] = AGENT_PLANNING;
+    const planning_refelection_docs = await splitter.createDocuments([SEND_TO_ACTION["reflection"]+"\n"+SEND_TO_ACTION["planning"]]);
+    const updateReflectionPlans = await loadedVectorStore.addDocuments(planning_refelection_docs);
+    if (updateReflectionPlans)
+      console.log("STORED UPDATED MEMORIES..", updateReflectionPlans);
+    await loadedVectorStore.save(directory);
+
+    console.log("ENYA:", SEND_TO_ACTION);
 
     // console.log("planning", AGENT_PLANNING, "reflections", AGENT_REFLECTIONS);
     agentState = agent_states.acting;
@@ -437,7 +455,7 @@ let agentState = agent_states.initial;
       Memories: {retrieved_memories}
       Current mission:{mission}
 
-      Choose from the following actions and provide it's needed parameters in < > :
+      Choose from the following actions and provide it's exact name needed parameters in < >:
         ACTIONS: [
           TWEET:<string>,
           RETWEET:<tweet's link>,
@@ -474,10 +492,11 @@ let agentState = agent_states.initial;
         "EXPECTED_REWARD":"<expected reward>"
       }`,
     });
-    var ACTION_RESPONSE = JSON.parse(await model.call(action_prompt)).split(
+    const act_res = await model.call(action_prompt);
+    console.log("Action RESPONSE:",act_res);
+    var ACTION_RESPONSE = JSON.parse(act_res.split(
       "Response:"
-    )[1];
-    console.log("ACTION RESPONSE:", ACTION_RESPONSE);
+    )[1]);
     const inputQuestions = [
       {
         type: "list",
@@ -541,12 +560,14 @@ let agentState = agent_states.initial;
       await executor(raw_action);
     }
     // Gather immediate results, create expected results here????
+    // Write reflection and planning to memory 
   }
 
   async function executor(RawAction) {
-    var action = RawAction.action;
-    var func = action.split(":")[0];
-    var data = action.split(":")[1];
+    var action = RawAction.ACTION;
+    var action_split= action.split(":");
+    var func = action_split[0];
+     var data = action_split[1];
     if (!func || !data)
       return "ERROR: Improper or no func or data passed to executor";
     if (func === "TWEET") {
