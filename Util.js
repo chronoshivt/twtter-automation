@@ -113,7 +113,18 @@ function getStringBetweenDelimiters(source, delimiter1, delimiter2) {
   }
 
   return source.substring(start, end); // return the portion of source between the delimiters
+};
+
+function removeTwitterFromString(str) {
+  var tw = "https://twitter.com";
+  if (str.includes(tw)) {
+    return str.replace(tw, "");
+  } else {
+    return str;
+  }
 }
+
+
 exports.goToPage = goToPage;
 exports.waitFor = waitFor;
 exports.aLongTime = aLongTime;
@@ -121,3 +132,4 @@ exports.rotateProxies = rotateProxies;
 exports.getCurrentDateTime = getCurrentDateTime;
 exports.determineFormatAndReturnWithSuffix = determineFormatAndReturnWithSuffix;
 exports.getStringBetweenDelimiters = getStringBetweenDelimiters;
+exports.removeTwitterFromString = removeTwitterFromString;

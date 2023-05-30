@@ -11,6 +11,9 @@ const { PromptTemplate } = require("langchain/prompts");
 const { HNSWLib } = require("langchain/vectorstores/hnswlib");
 const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
 const { CharacterTextSplitter } = require("langchain/text_splitter");
+const { TextLoader } =  require("langchain/document_loaders/fs/text");
+
+const { JSONLoader } =require ("langchain/document_loaders/fs/json");
 
 // Other config
 const cheerio = require("cheerio");
@@ -121,464 +124,6 @@ let agentState = agent_states.initial;
   // Blank slate
   // -----------------
 
-  var CONTINOUS_MODE = false;
-  const MAX_ITERATIONS = 10;
-  var memory_blob;
-  var situation = false;
-  var ACTION_EXECUTING;
-  let mission =
-    "I am a crypto-rich Nick-Landian accelerationist 19 year old kawaii girl. I am creative. i like to type in all lowercase and Sometimes capitalize words to be Quirky. i like to troll.";
-  if (agentState === "initial") {
-    console.log("mission:", mission);
-    if (mission) {
-      agentState = agent_states.perceiving;
-    }
-    // return;
-  }
-  // start state loop
-  let i = 0;
-  while (
-    i < MAX_ITERATIONS &&
-    (agentState !== null || agentState !== "initial")
-  ) {
-    console.log(`Global: Current state: ${agentState}`);
-    i++;
-    switch (agentState) {
-      case agent_states.perceiving:
-        console.log("Currently PERCEIVING...");
-        memory_blob = await perceive();
-        break;
-      case agent_states.memory:
-        // await this.logout();
-        console.log("Currently accessing MEMORY...");
-        // console.log("mem_blbo:", memory_blob);
-        ACTION_EXECUTING = await memory(memory_blob, mission, situation);
-        break;
-      case agent_states.acting:
-        console.log("Currently executing an ACTION...");
-        await act(ACTION_EXECUTING, mission);
-        ACTION_EXECUTING = null;
-        // await this.logout();
-        break;
-    }
-  }
-
-  async function perceive() {
-    // GET ALL RELEVANT ENVIRONMENT INFORMATION TO THE AGENT
-    var notifications;
-    var status;
-    var dms;
-    // Make into memory stream string format
-
-    // THE TIMELINE
-    var the_timeline = "Timeline:\n";
-    var scroll = await scroll_the_timeline(1);
-    var tweet_mem_string = "";
-    scroll.forEach(function (tw) {
-      var when = Util.determineFormatAndReturnWithSuffix(tw["time"]);
-      the_timeline += `[${tw["date"]}]- USER: ${tw["author"]} POSTED: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]} \n---\n`;
-    });
-    // the_timeline = `${tweet_mem_string}`;
-
-    if (!the_timeline) return console.error("NO timeline from twitter");
-    // Build memory stream programmatically
-    var memory_stream = {
-      timeline: the_timeline,
-    };
-
-    // console.log(memory_stream);
-    // Check for situation?
-    agentState = agent_states.memory;
-    return memory_stream;
-  }
-  // returns memory stream segments
-  async function memory(memory_blob, mission, situation) {
-    // Take in action rewards+ env state summary?
-
-    var background = mission
-    if (!memory_blob)
-      return console.error("No memory blob provided to memory()");
-    // console.log("MEMORIES/EVENTS:", memory_blob);
-    const splitter = new CharacterTextSplitter({
-      separator: "\n---\n",
-      chunkSize: 256,
-      chunkOverlap: 64,
-    });
-    const docs = await splitter.createDocuments([memory_blob["timeline"]]);
-    const directory = "./memory_stream";
-     
-      var loadedVectorStore;
-      const files = await fs.readdir(directory);
-      if (files.length > 0) {
-          console.log('The directory has files.');
-            loadedVectorStore = await HNSWLib.load(
-            directory,
-            new OpenAIEmbeddings()
-          );
-      } else {
-          console.log('The directory is empty.');
-          console.log('VectorStore does not exist');
-          loadedVectorStore = await HNSWLib.fromDocuments(
-          docs,
-          new OpenAIEmbeddings()
-        );
-      }
-    // const vectorStore = await HNSWLib.fromTexts(
-    //   [memory_blob["timeline"]],
-    //   [{ id: "docstore_" + Util.getCurrentDateTime() }],
-    //   new OpenAIEmbeddings()
-    // );
-    // // Save the vector store to a directory
-
-    // Load the vector store from the same directory
-    
-    // vectorStore and loadedVectorStore are identical
-    const prompt = new PromptTemplate({
-      template: `Use the provided user bio to extract 10 keywords from the 
-      provided text titled B. Only return keywords found in Text B.
-      Order the keywords from most relevant to least relevant separated by commas.
-      Note that the content of the post should be should be more important than user's names when selecting words.
-      Do not include words used in the user bio.
-
-      Text B:{memory_blob}
-      User bio:{background}
-      {user_feedback}
-
-      Response format:
-      <10 keywords comma separated>`,
-      inputVariables: ["background", "memory_blob", "user_feedback"],
-    });
-    var user_feedback = (situation? "User feedback: "+situation : "");
-    console.log("situation:", user_feedback);
-    var situation_prompt = await prompt.format({
-      background: background,
-      memory_blob: memory_blob["timeline"],
-      user_feedback:situation
-    });
-    var situation_response = await model.call(situation_prompt);
-    console.log("situation keywords", situation_response);
-    // Retrieval function here
-    // Retrieval(situation) returns memory stream segment relevant to situation
-    // Pass to ranking prompt
-
-    const memory_retrieval = await loadedVectorStore.similaritySearch(
-      situation_response,
-      6
-    );
-    console.log("result from memory QUERY:", memory_retrieval);
-    var memory_ranking_string = "";
-    var retrieved_memories = {};
-
-    // const vectorStore = await HNSWLib.load(directory, new OpenAIEmbeddings());
-    // // Load the docs into the vector store
-    const updateMemories = await loadedVectorStore.addDocuments(docs);
-    if (updateMemories)
-      console.log("STORED UPDATED MEMORIES..", updateMemories);
-    await loadedVectorStore.save(directory);
-
-    var i = 0;
-    memory_retrieval.forEach(function (mem) {
-      i++;
-      memory_ranking_string +=
-        "mem_id " + i + ": " + mem["pageContent"] + "\n---\n";
-      retrieved_memories[i] = {
-        memories: mem["pageContent"],
-        mem_id: i,
-      };
-    });
-    console.log(memory_ranking_string);
-    const prompt2 = new PromptTemplate({
-      template: `Using the provided user bio and situation, analyze each of the 
-      provided memories and give each of them a relevance, and importance score:
-
-      Relevance is how pertinent the memory is to the given situation. Rate from
-      0.00 to 1. With 0.00 being completely irrelevant to 1 being directly 
-      about the topic.
-
-      Importance is how important the memory is to the user in context with
-      their bio and slightely less taking into account the situation. Rate from 
-      1 - 10. 1 being extremely mundane to 10 being extremely poignant.
-
-      User bio:{background},
-      Situation:{situation},
-
-      Memories:{memories}
-
-      The response should an array containing objects.
-      Only respond with a raw parse-able array full of JSON string objects:
-        "memory":<mem_id number only>,
-        "relevance":<0.00 to 1>,
-        "importance":<1 to 10>`,
-      inputVariables: ["memories", "background", "situation"],
-    });
-
-    var retrieval_prompt = await prompt2.format({
-      memories: memory_ranking_string,
-      background: background,
-      situation: mission,
-    });
-
-    var retrieval_ranking = await model.call(retrieval_prompt);
-    console.log("retrieval ranking:", retrieval_ranking);
-
-    // Map ratings to retrieved memories
-    JSON.parse(retrieval_ranking).forEach(function (ranking) {
-      retrieved_memories[ranking["memory"]]["relevance"] = ranking["relevance"];
-      retrieved_memories[ranking["memory"]]["importance"] =
-        ranking["importance"];
-    });
-    var SEND_TO_ACTION = {
-      situation_blob: memory_blob["timeline"],
-      retrieved_memories: retrieved_memories,
-      context: mission,
-      reflection: "",
-      planning: "",
-    };
-    // Make higher level planning
-
-    // Make reflections
-    const reflection_prompt = new PromptTemplate({
-      template: `
-      You are an AI social media account user tasked with running a character's account
-      to have realistic interactions and persona.
-      Using the provided context and the past memory stream do the following things:
-      
-      a. Reflect abstractly on the situation in context with past memories and make note of
-      emotions, relationships with others, and goals. Reflections should be in first person,
-      and take into consideration things important to the character as well as relationships.
-      After each reflection, append a Japanese kaomoji emoticon that describes the thought.
-
-      {user_feedback}
-      Context:{situation}
-      Memories:{retrieved_memories}
-      Background:{background}
-
-      Use this response format only, 1 short paragraph each:
-      THOUGHTS: <low level inner thoughts>,
-      REFLECTIONS: <abstract high level and situational reflections>,
-      REASONING: <reasoning for reflections, conclusions, feelings, emotions>
-      CRITICISM: <criticisms of self, behavior, relationship etc.>
-      PLANNING: <exploration of future short term and long term plans and goals>,
-        `,
-      inputVariables: ["situation", "retrieved_memories", "background","user_feedback"],
-    });
-    var reflections = await reflection_prompt.format({
-      situation: memory_blob["timeline"],
-      retrieved_memories: retrieved_memories,
-      background: background,
-      user_feedback:user_feedback
-    });
-    let AGENT_REFLECTIONS = await model.call(reflections);
-
-    // Higher level planning
-    const planning_prompt = new PromptTemplate({
-      template: `
-      You are an AI social media account user tasked with running a character's account
-      to have realistic interactions and persona. Write all responses in first person view of the character.
-      Using the provided context and the past memory stream do the following things:
-      
-      a. Using the provided context, memories, and background texts,
-      write, add, or change both long term and short term plans for the
-      charcter to accomplish their goals. Plans should take into account
-      past plans, as well as interactions, the context, and memories relevant to
-      the characters goals. Take into account relevance and importance of memories to the character.
-
-      Long term goals and plans can be more abstract and vague.
-      Long term plans/goal examples: "Tweet more about x topic",
-
-      Short term plans should be 1 or 2 immediate and actionable and are usually situational in response to the context. Be specific.
-      Short term plan examples: "Respond to user @JohnDoe 'Thanks for the feedack!' ", "Tweet <text> opinion. ", "Retweet post <tweet link> by user <y>"
-      {user_feedback}
-      Context:{situation}
-      Past Memories:{retrieved_memories}
-      Character Background:{background}
-
-      Use this response format only, 1 short paragraph each:
-      LONG_TERM:<long term plan and/or goals the character has>,
-      SHORT_TERM:<short term plan the character intends to execute>
-        `,
-      inputVariables: ["situation", "retrieved_memories", "background", "user_feedback"],
-    });
-    var future_plans = await planning_prompt.format({
-      situation: memory_blob["timeline"],
-      retrieved_memories: retrieved_memories,
-      background: background,
-      user_feedback:user_feedback
-    });
-    let AGENT_PLANNING = await model.call(future_plans);
-    // Send to action
-    // console.log("memory_planning_PROMPT", planning);
-    // console.log("memory_planning", action);
-    SEND_TO_ACTION["reflection"] = AGENT_REFLECTIONS;
-    SEND_TO_ACTION["planning"] = AGENT_PLANNING;
-    const planning_refelection_docs = await splitter.createDocuments([SEND_TO_ACTION["reflection"]+"\n"+SEND_TO_ACTION["planning"]]);
-    const updateReflectionPlans = await loadedVectorStore.addDocuments(planning_refelection_docs);
-    if (updateReflectionPlans)
-      console.log("STORED UPDATED MEMORIES..", updateReflectionPlans);
-    await loadedVectorStore.save(directory);
-
-    console.log("ENYA:", SEND_TO_ACTION);
-
-    // console.log("planning", AGENT_PLANNING, "reflections", AGENT_REFLECTIONS);
-    agentState = agent_states.acting;
-    return SEND_TO_ACTION;
-    // Plan next tasks, plan next action. Make sure to re - evaluate.
-  }
-
-  async function act(data, mission) {
-    // Check for continuous mode
-    // If yes, continue to action
-    // If no, ask for user input. Return to memory with user input.
-    // Begin action,
-    //
-    var { situation_blob, retrieved_memories, context, reflection, planning } =
-      data;
-    const prompt = new PromptTemplate({
-      template: `
-      You are an AI roleplaying as a character and making decisions based
-      on the provided information to execute actions.
-
-      The information provided is defined below and should be considered
-      when evaluating which action to take. Be true to your
-      character. If the action is interacting with another tweet, 
-      make sure provide the tweet's link in your response.
-
-      Context-This is an event stream of the characters current situation and state. Any
-      interactions with other users will come from an event provided her.
-      Planning-These are short term and long term plans the character has made towards
-      their goal. The short term plan should be taken into heavy consideration when 
-      returning an action. Sometimes, they may contain direct actions to execute.
-      Reflections-These are reflections the character has made based on the current
-      context.
-      Memories-These are past memories the character has recalled relevant to the situation,
-      rated by relevance and importance. 
-        'importance' is how impactful the memory is to the characters life, goals, and relationships
-        'relevance' is how pertinent the memory is to the current situation.
-      Use these ratings when considering memories to reference in final action evaluation.
-
-      Context:{situation_blob}
-      Planning:{planning}
-      Memories: {retrieved_memories}
-      Reflections:{reflection}
-      Current mission:{mission}
-
-      Choose from the following actions and provide it's exact name all needed parameters in < >:
-        ACTIONS: [
-          TWEET:<string>,
-          RETWEET:<tweet's link>,
-          QUOTE_TWEET:<tweet's link> $ <quote tweet>,
-          LIKE:<tweet's link>,
-          REPLY:<tweet's link> $ <reply text>,
-          FOLLOW/UNFOLLOW:<user @>
-        ],
-        
-        Return only a raw JSON parse-able object of string keys with their values with
-        the following format:
-        Response:
-        {response_format}
-
-        Make sure to double-check you are returning the correct link in the exact provided format to the desired tweet you
-        want to interact with.
-        `,
-      inputVariables: [
-        "situation_blob",
-        "planning",
-        "reflection",
-        "retrieved_memories",
-        "mission",
-        "response_format",
-      ],
-    });
-
-    const action_prompt = await prompt.format({
-      situation_blob: situation_blob,
-      planning: planning,
-      reflection: reflection,
-      retrieved_memories: retrieved_memories,
-      mission: mission,
-      response_format: `{
-        "ACTION":"<action+params>",
-        "REASONING":"<reasoning>",
-        "EXPECTED_REWARD":"<expected reward>"
-      }`,
-    });
-    const act_res = await model.call(action_prompt);
-    console.log("Action RESPONSE:",act_res);
-    var ACTION_RESPONSE = JSON.parse(act_res.split(
-      "Response:"
-    )[1]);
-    const inputQuestions = [
-      {
-        type: "list",
-        name: "user_input",
-        message: "Choose what to do:",
-        choices: ["Confirm Action", "Enter Continous Mode", "Provide Feedback"],
-      },
-      //when choice continous is true, ask this question
-      {
-        type: "input",
-        name: "continous",
-        message: "How many loops to do:",
-        when: (answers) => {
-          if (answers.user_input === "Enter Continous Mode") {
-            return true;
-          }
-        },
-      },
-
-      //when role is intern is true, ask this question
-      {
-        type: "input",
-        name: "feedback",
-        message: "Provide agent feedback:",
-        when: (answers) => {
-          if (answers.user_input === "Provide Feedback") {
-            return true;
-          }
-        },
-      },
-    ];
-    if (CONTINOUS_MODE == false) {
-      var raw_action = ACTION_RESPONSE;
-
-      var INQUIRER_RESP = await inquirer
-        .prompt(inputQuestions)
-        .then((answer) => {
-          console.log("Inquirer responses:", answer);
-          return answer;
-        });
-      console.log("RAW ACTION:", raw_action);
-      if (INQUIRER_RESP.user_input === "Confirm Action") {
-        // execute the action
-        await executor(raw_action);
-      } else if (INQUIRER_RESP.continous) {
-        // Execute action,
-        await executor(raw_action);
-        // set continous mode loops
-        CONTINOUS_MODE = INQUIRER_RESP.continous;
-      } else if (INQUIRER_RESP.feedback) {
-        // format user input,
-        console.log("User returned feedback:" + INQUIRER_RESP.feedback);
-        // Either send input back to memory,
-        let user_feedback_memory = `USER FEEDBACK: The user has provided the following feedback
-        to the action you've chosen:\n`+INQUIRER_RESP.feedback;
-        situation = user_feedback_memory;
-        agentState = agent_states.memory;
-        return;
-      }
-    } else {
-      CONTINOUS_MODE--;
-      if (CONTINOUS_MODE == 0) CONTINOUS_MODE = false;
-      console.log("IN CONTINOUS MODE, LOOPS LEFT:" + CONTINOUS_MODE);
-      // execute action
-      await executor(raw_action);
-    }
-    // Gather immediate results, create expected results here????
-    // Write reflection and planning to memory 
-    situation = "";
-    agentState = agent_states.perceiving;
-    return;
-  }
 
   async function executor(RawAction) {
     var action = RawAction.ACTION;
@@ -1061,8 +606,41 @@ let agentState = agent_states.initial;
     return formatted_tweets;
   }
 
-  async function feed_data() {}
+  async function feed_txt_file(data_path) {
+    const splitter = new CharacterTextSplitter({
+        separator: "\n---\n",
+        chunkSize: 256,
+        chunkOverlap: 64,
+      });
+      const directory = "./memory_stream";
+      const loader = new JSONLoader(data_path);
+      
+      const docs = await loader.load();
+      const files = await fs.readdir(directory);
+      var loadedVectorStore;
+      if (files.length > 0) {
+            console.log('The directory has files.');
+              loadedVectorStore = await HNSWLib.load(
+              directory,
+              new OpenAIEmbeddings()
+            );
+            const updateMemories = await loadedVectorStore.addDocuments(docs);
+            if (updateMemories)
+              console.log("STORED UPDATED MEMORIES..", updateMemories);
+            await loadedVectorStore.save(directory);
+        
+        } else {
+            console.log('The directory is empty.');
+            console.log('VectorStore does not exist');
+            loadedVectorStore = await HNSWLib.fromDocuments(
+            docs,
+            new OpenAIEmbeddings()
+          );
+          await loadedVectorStore.save(directory);
 
+        }
+  }
+await feed_txt_file("./miya.json")
   await browser.close();
   console.timeEnd("whole task");
 })();
