@@ -65,7 +65,7 @@ let agentState = agent_states.initial;
   // const proxy = Util.rotateProxies("./proxies/proxies.txt");
   const proxy = {
     ipPort: "gw.thunderproxies.net:5959",
-    user: "H7ZLEvd4oUxuskm5H5-res_sc-US_ILLINOIS",
+    user: "H7ZLEvd4oUxuskm5H5-res-ROW",
     pass: "rdA9xtg2qfcZAg1uwT",
   };
   // Launch browser
@@ -81,7 +81,6 @@ let agentState = agent_states.initial;
       `--proxy-server=${proxy.ipPort}`,
       `--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36`,
       `--window-size=800,600`,
-      "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-accelerated-2d-canvas",
@@ -111,9 +110,9 @@ let agentState = agent_states.initial;
   const page = await browser.newPage();
   await page.setDefaultNavigationTimeout(0);
   // Setting cookies for each account to avoid having to relog into Twitter.
-  const cookieString = await fs.readFile("./cookies/howl-cookies.json");
-  const cookies = JSON.parse(cookieString);
-  await page.setCookie(...cookies);
+  // const cookieString = await fs.readFile("./cookies/howl-cookies.json");
+  // const cookies = JSON.parse(cookieString);
+  // await page.setCookie(...cookies);
   // // Connect to proxy
   await page.authenticate({
     username: proxy.user,
@@ -246,15 +245,17 @@ let agentState = agent_states.initial;
     // Login
     console.time("signin");
     await Util.goToPage(page, "https://twitter.com/login");
-    await page.type('div [autocomplete="username"]', "HOWLSMOVLNG");
+    await Util.waitFor(20000);
+    await page.$$('div [autocomplete="username"]');
+    await page.type('div [autocomplete="username"]', "wobypass");
     await Util.waitFor(4000);
     page.keyboard.press("Enter");
     await Util.waitFor(3000);
-    await page.type('div [name="password"]', "getItGwizted72");
+    await page.type('div [name="password"]', "Neutulsa7715");
     await Util.waitFor(4000);
     page.keyboard.press("Enter");
     await page.waitForNavigation({ timeout: 120000 });
-
+    await Util.waitFor(4000);
     console.timeEnd("signin");
 
     return;
@@ -658,8 +659,24 @@ let agentState = agent_states.initial;
     }
   }
 
-  await replyToTweet("/rxpapii/status/1667295910080937987", "yeah sure");
+async function manual_signIn(cookies) {
+     // Login
+     console.time("signin");
+     await Util.goToPage(page, "https://twitter.com/login");
+     await Util.waitFor(240000);
+    console.log("5 mins left");
+     await Util.waitFor(240000);
 
-  await browser.close();
+     console.timeEnd("signin");
+     await createCookies(cookies);
+
+     return;
+}
+
+await manual_signIn("wobypass");
+console.log("completed"
+)
+// await makeATweet('whats guud')
+await browser.close();
   console.timeEnd("whole task");
 })();

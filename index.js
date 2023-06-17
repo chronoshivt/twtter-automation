@@ -76,7 +76,6 @@ let agentState = agent_states.initial;
       `--proxy-server=${proxy.ipPort}`,
       `--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36`,
       `--window-size=800,600`,
-      "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-accelerated-2d-canvas",
@@ -615,7 +614,11 @@ let agentState = agent_states.initial;
       var link = Util.removeTwitterFromString(data.trim());
       await likeTweet(link);
     } else if (func === "REPLY") {
+      var datasplit = data.split("$");
+      var link = Util.removeTwitterFromString(datasplit[0].trim());
+      var text = datasplit[1];
       console.log("AGENT REPLYING:" + data);
+      await replyToTweet(link, text)
     } else if (func === "FOLLOW" || func === "UNFOLLOW") {
       console.log("AGENT UNFOLLOWING/FOLLOWING:" + data);
     }
