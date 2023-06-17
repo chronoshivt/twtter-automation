@@ -1,3 +1,5 @@
+// For testing twitter automation without bot
+
 const readline = require("readline");
 // Puppeteer config
 // Stealth attachments
@@ -11,9 +13,9 @@ const { PromptTemplate } = require("langchain/prompts");
 const { HNSWLib } = require("langchain/vectorstores/hnswlib");
 const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
 const { CharacterTextSplitter } = require("langchain/text_splitter");
-const { TextLoader } =  require("langchain/document_loaders/fs/text");
+const { TextLoader } = require("langchain/document_loaders/fs/text");
 
-const { JSONLoader } =require ("langchain/document_loaders/fs/json");
+const { JSONLoader } = require("langchain/document_loaders/fs/json");
 
 // Other config
 const cheerio = require("cheerio");
@@ -124,12 +126,11 @@ let agentState = agent_states.initial;
   // Blank slate
   // -----------------
 
-
   async function executor(RawAction) {
     var action = RawAction.ACTION;
-    var action_split= action.split(":");
+    var action_split = action.split(":");
     var func = action_split[0];
-     var data = action_split[1];
+    var data = action_split[1];
     if (!func || !data)
       return "ERROR: Improper or no func or data passed to executor";
     if (func === "TWEET") {
@@ -144,7 +145,7 @@ let agentState = agent_states.initial;
       var datasplit = data.split("$");
       var link = Util.removeTwitterFromString(datasplit[0].trim());
       var text = datasplit[1];
-      await quoteTweet(link,text);
+      await quoteTweet(link, text);
     } else if (func === "LIKE") {
       console.log("AGENT LIKING:" + data);
       var link = Util.removeTwitterFromString(data.trim());
@@ -182,17 +183,16 @@ let agentState = agent_states.initial;
   }
 
   async function basicRetweet(tweet) {
-    await Util.goToPage(page, "https://twitter.com"+tweet);
+    await Util.goToPage(page, "https://twitter.com" + tweet);
     await Util.waitFor(3000);
     const links = await page.$$('div[aria-label="Retweet"]');
-    await links[0].click(); // Clicks the following tab  
-    await Util.waitFor(2000);    
+    await links[0].click(); // Clicks the following tab
+    await Util.waitFor(2000);
     await page.keyboard.press("Enter");
-
   }
 
   async function quoteTweet(tweet, quote) {
-    await Util.goToPage(page, "https://twitter.com"+tweet);
+    await Util.goToPage(page, "https://twitter.com" + tweet);
     await Util.waitFor(3000);
     const links = await page.$$('div[aria-label="Retweet"]');
     await links[0].click(); // Clicks the following tab
@@ -210,12 +210,11 @@ let agentState = agent_states.initial;
   }
 
   async function likeTweet(tweet) {
-    await Util.goToPage(page, "https://twitter.com"+tweet);
+    await Util.goToPage(page, "https://twitter.com" + tweet);
     await Util.waitFor(3000);
     const links = await page.$$('div[aria-label="Like"]');
     await links[0].click(); // Clicks the following tab
     await Util.waitFor(3000);
-
   }
 
   // -------------------------
@@ -608,39 +607,34 @@ let agentState = agent_states.initial;
 
   async function feed_txt_file(data_path) {
     const splitter = new CharacterTextSplitter({
-        separator: "\n---\n",
-        chunkSize: 256,
-        chunkOverlap: 64,
-      });
-      const directory = "./memory_stream";
-      const loader = new JSONLoader(data_path);
-      
-      const docs = await loader.load();
-      const files = await fs.readdir(directory);
-      var loadedVectorStore;
-      if (files.length > 0) {
-            console.log('The directory has files.');
-              loadedVectorStore = await HNSWLib.load(
-              directory,
-              new OpenAIEmbeddings()
-            );
-            const updateMemories = await loadedVectorStore.addDocuments(docs);
-            if (updateMemories)
-              console.log("STORED UPDATED MEMORIES..", updateMemories);
-            await loadedVectorStore.save(directory);
-        
-        } else {
-            console.log('The directory is empty.');
-            console.log('VectorStore does not exist');
-            loadedVectorStore = await HNSWLib.fromDocuments(
-            docs,
-            new OpenAIEmbeddings()
-          );
-          await loadedVectorStore.save(directory);
+      separator: "\n---\n",
+      chunkSize: 256,
+      chunkOverlap: 64,
+    });
+    const directory = "./memory_stream";
+    const loader = new JSONLoader(data_path);
 
-        }
+    const docs = await loader.load();
+    const files = await fs.readdir(directory);
+    var loadedVectorStore;
+    if (files.length > 0) {
+      console.log("The directory has files.");
+      loadedVectorStore = await HNSWLib.load(directory, new OpenAIEmbeddings());
+      const updateMemories = await loadedVectorStore.addDocuments(docs);
+      if (updateMemories)
+        console.log("STORED UPDATED MEMORIES..", updateMemories);
+      await loadedVectorStore.save(directory);
+    } else {
+      console.log("The directory is empty.");
+      console.log("VectorStore does not exist");
+      loadedVectorStore = await HNSWLib.fromDocuments(
+        docs,
+        new OpenAIEmbeddings()
+      );
+      await loadedVectorStore.save(directory);
+    }
   }
-await feed_txt_file("./miya.json")
+  await feed_txt_file("./miya.json");
   await browser.close();
   console.timeEnd("whole task");
 })();
