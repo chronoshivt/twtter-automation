@@ -195,7 +195,7 @@ let agentState = agent_states.initial;
   async function memory(memory_blob, mission, situation) {
     // Take in action rewards+ env state summary?
 
-    var background = mission
+    var background = mission;
     if (!memory_blob)
       return console.error("No memory blob provided to memory()");
     // console.log("MEMORIES/EVENTS:", memory_blob);
@@ -206,23 +206,20 @@ let agentState = agent_states.initial;
     });
     const docs = await splitter.createDocuments([memory_blob["timeline"]]);
     const directory = "./memory_stream";
-     
-      var loadedVectorStore;
-      const files = await fs.readdir(directory);
-      if (files.length > 0) {
-          console.log('The directory has files.');
-            loadedVectorStore = await HNSWLib.load(
-            directory,
-            new OpenAIEmbeddings()
-          );
-      } else {
-          console.log('The directory is empty.');
-          console.log('VectorStore does not exist');
-          loadedVectorStore = await HNSWLib.fromDocuments(
-          docs,
-          new OpenAIEmbeddings()
-        );
-      }
+
+    var loadedVectorStore;
+    const files = await fs.readdir(directory);
+    if (files.length > 0) {
+      console.log("The directory has files.");
+      loadedVectorStore = await HNSWLib.load(directory, new OpenAIEmbeddings());
+    } else {
+      console.log("The directory is empty.");
+      console.log("VectorStore does not exist");
+      loadedVectorStore = await HNSWLib.fromDocuments(
+        docs,
+        new OpenAIEmbeddings()
+      );
+    }
     // const vectorStore = await HNSWLib.fromTexts(
     //   [memory_blob["timeline"]],
     //   [{ id: "docstore_" + Util.getCurrentDateTime() }],
@@ -231,7 +228,7 @@ let agentState = agent_states.initial;
     // // Save the vector store to a directory
 
     // Load the vector store from the same directory
-    
+
     // vectorStore and loadedVectorStore are identical
     const prompt = new PromptTemplate({
       template: `Use the provided user bio to extract 10 keywords from the 
@@ -248,12 +245,12 @@ let agentState = agent_states.initial;
       <10 keywords comma separated>`,
       inputVariables: ["background", "memory_blob", "user_feedback"],
     });
-    var user_feedback = (situation? "User feedback: "+situation : "");
+    var user_feedback = situation ? "User feedback: " + situation : "";
     console.log("situation:", user_feedback);
     var situation_prompt = await prompt.format({
       background: background,
       memory_blob: memory_blob["timeline"],
-      user_feedback:situation
+      user_feedback: situation,
     });
     var situation_response = await model.call(situation_prompt);
     console.log("situation keywords", situation_response);
@@ -360,13 +357,18 @@ let agentState = agent_states.initial;
       CRITICISM: <criticisms of self, behavior, relationship etc.>
       PLANNING: <exploration of future short term and long term plans and goals>,
         `,
-      inputVariables: ["situation", "retrieved_memories", "background","user_feedback"],
+      inputVariables: [
+        "situation",
+        "retrieved_memories",
+        "background",
+        "user_feedback",
+      ],
     });
     var reflections = await reflection_prompt.format({
       situation: memory_blob["timeline"],
       retrieved_memories: retrieved_memories,
       background: background,
-      user_feedback:user_feedback
+      user_feedback: user_feedback,
     });
     let AGENT_REFLECTIONS = await model.call(reflections);
 
@@ -397,13 +399,18 @@ let agentState = agent_states.initial;
       LONG_TERM:<long term plan and/or goals the character has>,
       SHORT_TERM:<short term plan the character intends to execute>
         `,
-      inputVariables: ["situation", "retrieved_memories", "background", "user_feedback"],
+      inputVariables: [
+        "situation",
+        "retrieved_memories",
+        "background",
+        "user_feedback",
+      ],
     });
     var future_plans = await planning_prompt.format({
       situation: memory_blob["timeline"],
       retrieved_memories: retrieved_memories,
       background: background,
-      user_feedback:user_feedback
+      user_feedback: user_feedback,
     });
     let AGENT_PLANNING = await model.call(future_plans);
     // Send to action
@@ -411,8 +418,12 @@ let agentState = agent_states.initial;
     // console.log("memory_planning", action);
     SEND_TO_ACTION["reflection"] = AGENT_REFLECTIONS;
     SEND_TO_ACTION["planning"] = AGENT_PLANNING;
-    const planning_refelection_docs = await splitter.createDocuments([SEND_TO_ACTION["reflection"]+"\n"+SEND_TO_ACTION["planning"]]);
-    const updateReflectionPlans = await loadedVectorStore.addDocuments(planning_refelection_docs);
+    const planning_refelection_docs = await splitter.createDocuments([
+      SEND_TO_ACTION["reflection"] + "\n" + SEND_TO_ACTION["planning"],
+    ]);
+    const updateReflectionPlans = await loadedVectorStore.addDocuments(
+      planning_refelection_docs
+    );
     if (updateReflectionPlans)
       console.log("STORED UPDATED MEMORIES..", updateReflectionPlans);
     await loadedVectorStore.save(directory);
@@ -503,10 +514,8 @@ let agentState = agent_states.initial;
       }`,
     });
     const act_res = await model.call(action_prompt);
-    console.log("Action RESPONSE:",act_res);
-    var ACTION_RESPONSE = JSON.parse(act_res.split(
-      "Response:"
-    )[1]);
+    console.log("Action RESPONSE:", act_res);
+    var ACTION_RESPONSE = JSON.parse(act_res.split("Response:")[1]);
     const inputQuestions = [
       {
         type: "list",
@@ -560,8 +569,9 @@ let agentState = agent_states.initial;
         // format user input,
         console.log("User returned feedback:" + INQUIRER_RESP.feedback);
         // Either send input back to memory,
-        let user_feedback_memory = `USER FEEDBACK: The user has provided the following feedback
-        to the action you've chosen:\n`+INQUIRER_RESP.feedback;
+        let user_feedback_memory =
+          `USER FEEDBACK: The user has provided the following feedback
+        to the action you've chosen:\n` + INQUIRER_RESP.feedback;
         situation = user_feedback_memory;
         agentState = agent_states.memory;
         return;
@@ -574,7 +584,7 @@ let agentState = agent_states.initial;
       await executor(raw_action);
     }
     // Gather immediate results, create expected results here????
-    // Write reflection and planning to memory 
+    // Write reflection and planning to memory
     situation = "";
     agentState = agent_states.perceiving;
     return;
@@ -582,9 +592,9 @@ let agentState = agent_states.initial;
 
   async function executor(RawAction) {
     var action = RawAction.ACTION;
-    var action_split= action.split(":");
+    var action_split = action.split(":");
     var func = action_split[0];
-     var data = action_split[1];
+    var data = action_split[1];
     if (!func || !data)
       return "ERROR: Improper or no func or data passed to executor";
     if (func === "TWEET") {
@@ -599,7 +609,7 @@ let agentState = agent_states.initial;
       var datasplit = data.split("$");
       var link = Util.removeTwitterFromString(datasplit[0].trim());
       var text = datasplit[1];
-      await quoteTweet(link,text);
+      await quoteTweet(link, text);
     } else if (func === "LIKE") {
       console.log("AGENT LIKING:" + data);
       var link = Util.removeTwitterFromString(data.trim());
@@ -637,17 +647,16 @@ let agentState = agent_states.initial;
   }
 
   async function basicRetweet(tweet) {
-    await Util.goToPage(page, "https://twitter.com"+tweet);
+    await Util.goToPage(page, "https://twitter.com" + tweet);
     await Util.waitFor(3000);
     const links = await page.$$('div[aria-label="Retweet"]');
-    await links[0].click(); // Clicks the following tab  
-    await Util.waitFor(2000);    
+    await links[0].click(); // Clicks the following tab
+    await Util.waitFor(2000);
     await page.keyboard.press("Enter");
-
   }
 
   async function quoteTweet(tweet, quote) {
-    await Util.goToPage(page, "https://twitter.com"+tweet);
+    await Util.goToPage(page, "https://twitter.com" + tweet);
     await Util.waitFor(3000);
     const links = await page.$$('div[aria-label="Retweet"]');
     await links[0].click(); // Clicks the following tab
@@ -665,12 +674,36 @@ let agentState = agent_states.initial;
   }
 
   async function likeTweet(tweet) {
-    await Util.goToPage(page, "https://twitter.com"+tweet);
+    await Util.goToPage(page, "https://twitter.com" + tweet);
     await Util.waitFor(3000);
     const links = await page.$$('div[aria-label="Like"]');
     await links[0].click(); // Clicks the following tab
     await Util.waitFor(3000);
+  }
 
+  async function replyToTweet(tweet, reply) {
+    await Util.goToPage(page, "https://twitter.com" + tweet);
+    await Util.waitFor(3000);
+    const links = await page.$$('div[aria-label="Tweet text"]');
+    console.log(links);
+    await Util.waitFor(3000);
+    await links[0].click(); // Clicks the following tab
+    await Util.waitFor(3000);
+    await page.keyboard.type(reply, {
+      delay: 125,
+    });
+    await Util.waitFor(500);
+
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await Util.waitFor(500);
+    await page.keyboard.press("Enter");
+    await Util.waitFor(3000);
+    // await page.keyboard.down("Control");
+    // await page.keyboard.press("Enter");
+    // await page.keyboard.up("Control");
   }
 
   // -------------------------

@@ -657,11 +657,8 @@ let agentState = agent_states.initial;
       await loadedVectorStore.save(directory);
     }
   }
-  
 
-
-
-await replyToTweet("/rxpapii/status/1667295910080937987","yeah sure")
+  await replyToTweet("/rxpapii/status/1667295910080937987", "yeah sure");
 
   await browser.close();
   console.timeEnd("whole task");
