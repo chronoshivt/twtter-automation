@@ -87,7 +87,6 @@ let agentState = agent_states.initial;
       "--disable-accelerated-2d-canvas",
       "--no-first-run",
       "--no-zygote",
-      "--disable-gpu",
       "--disable-extensions",
       "--disable-component-extensions-with-background-pages",
       "--disable-default-apps",
@@ -217,6 +216,30 @@ let agentState = agent_states.initial;
     await Util.waitFor(3000);
   }
 
+  async function replyToTweet(tweet, reply) {
+    await Util.goToPage(page, "https://twitter.com" + tweet);
+    await Util.waitFor(3000);
+    const links = await page.$$('div[aria-label="Tweet text"]');
+    console.log(links);
+    await Util.waitFor(3000);
+    await links[0].click(); // Clicks the following tab
+    await Util.waitFor(3000);
+    await page.keyboard.type(reply, {
+      delay: 125,
+    });
+    await Util.waitFor(500);
+
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await Util.waitFor(500);
+    await page.keyboard.press("Enter");
+    await Util.waitFor(3000);
+    // await page.keyboard.down("Control");
+    // await page.keyboard.press("Enter");
+    // await page.keyboard.up("Control");
+  }
   // -------------------------
   // Sign into Twitter. Only needs to be done once per cookies.
   async function signIn() {
@@ -634,7 +657,9 @@ let agentState = agent_states.initial;
       await loadedVectorStore.save(directory);
     }
   }
-  await feed_txt_file("./miya.json");
+
+  await replyToTweet("/rxpapii/status/1667295910080937987", "yeah sure");
+
   await browser.close();
   console.timeEnd("whole task");
 })();
