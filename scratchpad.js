@@ -65,7 +65,7 @@ let agentState = agent_states.initial;
   // const proxy = Util.rotateProxies("./proxies/proxies.txt");
   const proxy = {
     ipPort: "gw.thunderproxies.net:5959",
-    user: "H7ZLEvd4oUxuskm5H5-res-ROW",
+    user: "H7ZLEvd4oUxuskm5H5-res_sc-US_TEXAS",
     pass: "rdA9xtg2qfcZAg1uwT",
   };
   // Launch browser
@@ -110,9 +110,9 @@ let agentState = agent_states.initial;
   const page = await browser.newPage();
   await page.setDefaultNavigationTimeout(0);
   // Setting cookies for each account to avoid having to relog into Twitter.
-  // const cookieString = await fs.readFile("./cookies/howl-cookies.json");
-  // const cookies = JSON.parse(cookieString);
-  // await page.setCookie(...cookies);
+  const cookieString = await fs.readFile("./cookies/chen.json");
+  const cookies = JSON.parse(cookieString);
+  await page.setCookie(...cookies);
   // // Connect to proxy
   await page.authenticate({
     username: proxy.user,
@@ -163,7 +163,7 @@ let agentState = agent_states.initial;
     await Util.waitFor(300);
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
-    await page.keyboard.press("Tab");
+    // await page.keyboard.press("Tab");
     await Util.waitFor(500);
     await page.keyboard.type(tweet, {
       delay: 125,
@@ -673,10 +673,10 @@ async function manual_signIn(cookies) {
      return;
 }
 
-await manual_signIn("wobypass");
-console.log("completed"
-)
-// await makeATweet('whats guud')
+// await manual_signIn("chen");
+// console.log("completed"
+// )
+await makeATweet('whats guud')
 await browser.close();
   console.timeEnd("whole task");
 })();
