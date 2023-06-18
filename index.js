@@ -54,17 +54,21 @@ const agent_states = {
   memory: "memory",
   acting: "acting",
 };
+
+// Start off as the intial state
 let agentState = agent_states.initial;
+
+// Proxy settings
+const proxy = {
+  ipPort: "gw.thunderproxies.net:5959",
+  user: "H7ZLEvd4oUxuskm5H5-res_sc-US_TEXAS",
+  pass: "rdA9xtg2qfcZAg1uwT",
+};
+// const proxy = Util.rotateProxies("./proxies/proxies.txt");
+
 (async () => {
-  // Configure proxy
-  // const proxy = Util.rotateProxies("./proxies/proxies.txt");
-  const proxy = {
-    ipPort: "gw.thunderproxies.net:5959",
-    user: "H7ZLEvd4oUxuskm5H5-res_sc-US_ILLINOIS",
-    pass: "rdA9xtg2qfcZAg1uwT",
-  };
   // Launch browser
-  console.time("whole task");
+  console.time("Whole Task Time:");
   const browser = await puppeteer.launch({
     headless: false,
     defaultViewport: {
@@ -106,7 +110,7 @@ let agentState = agent_states.initial;
   const page = await browser.newPage();
   await page.setDefaultNavigationTimeout(0);
   // Setting cookies for each account to avoid having to relog into Twitter.
-  const cookieString = await fs.readFile("./cookies/howl-cookies.json");
+  const cookieString = await fs.readFile("./cookies/chen.json");
   const cookies = JSON.parse(cookieString);
   await page.setCookie(...cookies);
   // // Connect to proxy
@@ -117,18 +121,21 @@ let agentState = agent_states.initial;
   await Util.goToPage(page, "about:blank");
   await Util.goToPage(page, "https://www.whatismyip.com/proxy-check/");
 
+  // ----------------
   // Blank slate
   // -----------------
 
   var CONTINOUS_MODE = false;
   const MAX_ITERATIONS = 10;
+
   var memory_blob;
   var situation = false;
   var ACTION_EXECUTING;
-  let mission =
-    "I am a crypto-rich Nick-Landian accelerationist 19 year old kawaii girl. I am creative. i like to type in all lowercase and Sometimes capitalize words to be Quirky. i like to troll.";
+  let mission = `I am a 4chan user that likes to troll and cause a ruckus on the timeline, I like
+    to get twitter users angry and make funny tweets loll, I also type in all lowercase and
+    am quirky.`;
   if (agentState === "initial") {
-    console.log("mission:", mission);
+    console.log("Mission:", mission);
     if (mission) {
       agentState = agent_states.perceiving;
     }
@@ -148,16 +155,13 @@ let agentState = agent_states.initial;
         memory_blob = await perceive();
         break;
       case agent_states.memory:
-        // await this.logout();
         console.log("Currently accessing MEMORY...");
-        // console.log("mem_blbo:", memory_blob);
         ACTION_EXECUTING = await memory(memory_blob, mission, situation);
         break;
       case agent_states.acting:
         console.log("Currently executing an ACTION...");
         await act(ACTION_EXECUTING, mission);
         ACTION_EXECUTING = null;
-        // await this.logout();
         break;
     }
   }
@@ -168,23 +172,18 @@ let agentState = agent_states.initial;
     var status;
     var dms;
     // Make into memory stream string format
-
-    // THE TIMELINE
     var the_timeline = "Timeline:\n";
     var scroll = await scroll_the_timeline(1);
-    var tweet_mem_string = "";
     scroll.forEach(function (tw) {
       var when = Util.determineFormatAndReturnWithSuffix(tw["time"]);
       the_timeline += `[${tw["date"]}]- USER: ${tw["author"]} POSTED: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]} \n---\n`;
     });
-    // the_timeline = `${tweet_mem_string}`;
 
     if (!the_timeline) return console.error("NO timeline from twitter");
     // Build memory stream programmatically
     var memory_stream = {
       timeline: the_timeline,
     };
-
     // console.log(memory_stream);
     // Check for situation?
     agentState = agent_states.memory;
@@ -193,26 +192,27 @@ let agentState = agent_states.initial;
   // returns memory stream segments
   async function memory(memory_blob, mission, situation) {
     // Take in action rewards+ env state summary?
-
-    var background = mission;
     if (!memory_blob)
       return console.error("No memory blob provided to memory()");
-    // console.log("MEMORIES/EVENTS:", memory_blob);
+
+    const directory = "./memory_stream";
+    const files = await fs.readdir(directory);
+    var background = mission;
+    var loadedVectorStore;
     const splitter = new CharacterTextSplitter({
       separator: "\n---\n",
       chunkSize: 256,
       chunkOverlap: 64,
     });
+    // Split text into chunks by "---"
+    // Add other env features once implemented
     const docs = await splitter.createDocuments([memory_blob["timeline"]]);
-    const directory = "./memory_stream";
 
-    var loadedVectorStore;
-    const files = await fs.readdir(directory);
     if (files.length > 0) {
-      console.log("The directory has files.");
+      console.log("Seems like a memory exists,");
       loadedVectorStore = await HNSWLib.load(directory, new OpenAIEmbeddings());
     } else {
-      console.log("The directory is empty.");
+      console.log("Memory directory is empty,");
       console.log("VectorStore does not exist");
       loadedVectorStore = await HNSWLib.fromDocuments(
         docs,
@@ -224,52 +224,48 @@ let agentState = agent_states.initial;
     //   [{ id: "docstore_" + Util.getCurrentDateTime() }],
     //   new OpenAIEmbeddings()
     // );
-    // // Save the vector store to a directory
-
-    // Load the vector store from the same directory
-
     // vectorStore and loadedVectorStore are identical
     const prompt = new PromptTemplate({
-      template: `Use the provided user bio to extract 10 keywords from the 
-      provided text titled B. Only return keywords found in Text B.
+      template: `
+      
+      Extract and select 10 keywords/topics from the provided text B.
+      Use the character bio, and user feedback (if provided) to decide which words to select.
+      Only choose words or names that would be relevant to the character.
+      Only return words and content found in text B.
       Order the keywords from most relevant to least relevant separated by commas.
-      Note that the content of the post should be should be more important than user's names when selecting words.
-      Do not include words used in the user bio.
-
-      Text B:{memory_blob}
-      User bio:{background}
-      {user_feedback}
+      Do not include words from the character bio or user feedback.
+      
+      Text B: {memory_blob}
+      Character bio: {background}
+      User feedback: {user_feedback}
 
       Response format:
       <10 keywords comma separated>`,
       inputVariables: ["background", "memory_blob", "user_feedback"],
     });
     var user_feedback = situation ? "User feedback: " + situation : "";
-    console.log("situation:", user_feedback);
+    console.log("User feedback ?:", user_feedback);
     var situation_prompt = await prompt.format({
       background: background,
       memory_blob: memory_blob["timeline"],
       user_feedback: situation,
     });
     var situation_response = await model.call(situation_prompt);
-    console.log("situation keywords", situation_response);
+    console.log("---\nKeywords extracted: ", situation_response);
     // Retrieval function here
     // Retrieval(situation) returns memory stream segment relevant to situation
     // Pass to ranking prompt
-
     const memory_retrieval = await loadedVectorStore.similaritySearch(
       situation_response,
-      6
+      4
     );
-    console.log("result from memory QUERY:", memory_retrieval);
+    // console.log("Result from memory QUERY:", memory_retrieval);
     var memory_ranking_string = "";
     var retrieved_memories = {};
 
-    // const vectorStore = await HNSWLib.load(directory, new OpenAIEmbeddings());
-    // // Load the docs into the vector store
     const updateMemories = await loadedVectorStore.addDocuments(docs);
     if (updateMemories)
-      console.log("STORED UPDATED MEMORIES..", updateMemories);
+      console.log("UPDATED memories to memory stream:", updateMemories);
     await loadedVectorStore.save(directory);
 
     var i = 0;
@@ -282,23 +278,25 @@ let agentState = agent_states.initial;
         mem_id: i,
       };
     });
-    console.log(memory_ranking_string);
+    // console.log("RETRIEVED MEMORIES:",memory_ranking_string);
     const prompt2 = new PromptTemplate({
-      template: `Using the provided user bio and situation, analyze each of the 
-      provided memories and give each of them a relevance, and importance score:
+      template: `Using the provided character bio and situation, analyze each of the 
+      provided memories and give each of them a relevance, and importance score using
+      the following definitions:
 
       Relevance is how pertinent the memory is to the given situation. Rate from
       0.00 to 1. With 0.00 being completely irrelevant to 1 being directly 
-      about the topic.
+      about the situation.
 
       Importance is how important the memory is to the user in context with
-      their bio and slightely less taking into account the situation. Rate from 
-      1 - 10. 1 being extremely mundane to 10 being extremely poignant.
+      their bio, values, and ego, and slightely less taking into account the situation.
+      Rate from 1 - 10. 1 being extremely mundane to 10 being extremely poignant.
 
-      User bio:{background},
+      Character bio:{background},
       Situation:{situation},
 
-      Memories:{memories}
+      Rate the following memories:
+      {memories}
 
       The response should an array containing objects.
       Only respond with a raw parse-able array full of JSON string objects:
@@ -315,14 +313,13 @@ let agentState = agent_states.initial;
     });
 
     var retrieval_ranking = await model.call(retrieval_prompt);
-    console.log("retrieval ranking:", retrieval_ranking);
-
     // Map ratings to retrieved memories
     JSON.parse(retrieval_ranking).forEach(function (ranking) {
       retrieved_memories[ranking["memory"]]["relevance"] = ranking["relevance"];
       retrieved_memories[ranking["memory"]]["importance"] =
         ranking["importance"];
     });
+    console.log("RETRIEVED MEMORIES + RANKINGS:", retrieved_memories);
     var SEND_TO_ACTION = {
       situation_blob: memory_blob["timeline"],
       retrieved_memories: retrieved_memories,
@@ -424,12 +421,15 @@ let agentState = agent_states.initial;
       planning_refelection_docs
     );
     if (updateReflectionPlans)
-      console.log("STORED UPDATED MEMORIES..", updateReflectionPlans);
+      console.log("STORED plans + reflections to MEMORY STREAM..");
     await loadedVectorStore.save(directory);
 
-    console.log("ENYA:", SEND_TO_ACTION);
+    console.log(
+      "ACTION PLANNING+ REFLECTIONS:",
+      AGENT_PLANNING,
+      AGENT_REFLECTIONS
+    );
 
-    // console.log("planning", AGENT_PLANNING, "reflections", AGENT_REFLECTIONS);
     agentState = agent_states.acting;
     return SEND_TO_ACTION;
     // Plan next tasks, plan next action. Make sure to re - evaluate.
@@ -453,24 +453,24 @@ let agentState = agent_states.initial;
       character. If the action is interacting with another tweet, 
       make sure provide the tweet's link in your response.
 
-      Context-This is an event stream of the characters current situation and state. Any
+      Context- This is an event stream of the characters current situation and state. Any
       interactions with other users will come from an event provided her.
-      Planning-These are short term and long term plans the character has made towards
+      Planning- These are short term and long term plans the character has made towards
       their goal. The short term plan should be taken into heavy consideration when 
       returning an action. Sometimes, they may contain direct actions to execute.
-      Reflections-These are reflections the character has made based on the current
+      Reflections- These are reflections the character has made based on the current
       context.
-      Memories-These are past memories the character has recalled relevant to the situation,
+      Memories- These are past memories the character has recalled relevant to the situation,
       rated by relevance and importance. 
         'importance' is how impactful the memory is to the characters life, goals, and relationships
         'relevance' is how pertinent the memory is to the current situation.
       Use these ratings when considering memories to reference in final action evaluation.
 
-      Context:{situation_blob}
-      Planning:{planning}
-      Memories: {retrieved_memories}
-      Reflections:{reflection}
-      Current mission:{mission}
+      Context: {situation_blob},
+      Planning: {planning},
+      Memories: {retrieved_memories},
+      Reflections: {reflection},
+      Current mission: {mission},
 
       Choose from the following actions and provide it's exact name all needed parameters in < >:
         ACTIONS: [
@@ -515,6 +515,7 @@ let agentState = agent_states.initial;
     const act_res = await model.call(action_prompt);
     console.log("Action RESPONSE:", act_res);
     var ACTION_RESPONSE = JSON.parse(act_res.split("Response:")[1]);
+    // User input questions
     const inputQuestions = [
       {
         type: "list",
@@ -618,7 +619,7 @@ let agentState = agent_states.initial;
       var link = Util.removeTwitterFromString(datasplit[0].trim());
       var text = datasplit[1];
       console.log("AGENT REPLYING:" + data);
-      await replyToTweet(link, text)
+      await replyToTweet(link, text);
     } else if (func === "FOLLOW" || func === "UNFOLLOW") {
       console.log("AGENT UNFOLLOWING/FOLLOWING:" + data);
     }
@@ -1052,7 +1053,9 @@ let agentState = agent_states.initial;
   async function scroll_the_timeline(amount) {
     if (!amount) return "Error: No amount to scroll provided";
     await Util.goToPage(page, "https://twitter.com/home");
+    await Util.waitFor(5000);
     const links = await page.$$('a[href="/home"]');
+    console.log("SCROLLING THE TL LINKS:", links);
     await links[3].click(); // Clicks the following tab
     await Util.waitFor(3000);
     var tweetArr = [];
@@ -1098,6 +1101,20 @@ let agentState = agent_states.initial;
   }
 
   async function feed_data() {}
+
+  async function manual_signIn(cookies) {
+    // Login
+    console.time("signin");
+    await Util.goToPage(page, "https://twitter.com/login");
+    await Util.waitFor(240000);
+    console.log("5 mins left");
+    await Util.waitFor(240000);
+
+    console.timeEnd("signin");
+    await createCookies(cookies);
+
+    return;
+  }
 
   await browser.close();
   console.timeEnd("whole task");
