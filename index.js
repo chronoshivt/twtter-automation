@@ -1,4 +1,6 @@
 const readline = require("readline");
+const jsonfile = require("jsonfile");
+
 // Puppeteer config
 // Stealth attachments
 // const puppeteer = require("puppeteer");
@@ -11,6 +13,7 @@ const { PromptTemplate } = require("langchain/prompts");
 const { HNSWLib } = require("langchain/vectorstores/hnswlib");
 const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
 const { CharacterTextSplitter } = require("langchain/text_splitter");
+const { JSONLoader } = require("langchain/document_loaders/fs/json");
 
 // Other config
 const cheerio = require("cheerio");
@@ -32,13 +35,11 @@ const model = new OpenAI({
   openAIApiKey: api_key,
   temperature: 0.9,
 });
-// let GPT4Turbo = async (message) => {
-//   const response = await openai.createChatCompletion({
-//     model: "gpt-4",
-//     messages: message,
-//   });
-//   return response.data.choices[0].message.content;
-// };
+const modelgpt35 = new OpenAI({
+  modelName: "gpt-3.5-turbo", // Defaults to "text-davinci-003" if no model provided.
+  temperature: 0.9,
+  openAIApiKey: api_key, // In Node.js defaults to process.env.OPENAI_API_KEY
+});
 console.log("Property of:");
 asciify(
   "O_o Research",
@@ -47,6 +48,127 @@ asciify(
     console.log(res);
   }
 );
+
+const __PROMPTS__ = {
+  keywords: `Select 10 keywords/topics from the provided text titled 'B'.
+    Follow these directions closely:
+    Use the character bio, and user feedback (if any) to decide which words to select.
+    Only choose words or names that would be relevant to the character.
+    Only return words and content found in text 'B'.
+    Order the keywords from most relevant to least relevant separated by commas.
+    Do not include ANY words from the character bio or user feedback.
+    
+    Text B: {memory_blob}
+    Character bio: {background}
+    User feedback: {user_feedback}
+    
+    Response format:
+    <10 keywords comma separated>`,
+  mem_rankings: `Using the provided character bio and situation, analyze each of the 
+    provided memories and give each of them a relevance, and importance score using
+    the following definitions:
+  
+    Relevance is how pertinent the memory is to the given situation. Rate from
+    0.00 to 1. With 0.00 being completely irrelevant to 1 being directly 
+    about the situation.
+  
+    Importance is how important the memory is to the user in context with
+    their bio, values, and ego, and slightely less taking into account the situation.
+    Rate from 1 - 10. 1 being extremely mundane to 10 being extremely poignant.
+  
+    Character bio:{background},
+    Situation:{situation},
+  
+    Rate the following memories:
+    {memories}
+  
+    The response should an array containing objects.
+    Only respond with a raw parse-able array full of JSON string objects:
+      "memory":<mem_id number only>,
+      "relevance":<0.00 to 1>,
+      "importance":<1 to 10>`,
+  planning: `You are an AI social media account user tasked with running a character's account
+    to have realistic interactions and persona. Write all responses in first person view of the character.
+    Using the provided context and the past memory stream do the following things:
+    
+    a. Using the provided context, memories, and background texts,
+    write, add, or change both long term and short term plans for the
+    charcter to accomplish their goals. Plans should take into account
+    past plans, as well as interactions, the context, and memories relevant to
+    the characters goals. Take into account relevance and importance of memories to the character.
+  
+    Long term goals and plans can be more abstract and vague.
+    Long term plans/goal examples: "Tweet more about x topic",
+  
+    Short term plans should be 1 or 2 immediate and actionable and are usually situational in response to the context. Be specific.
+    Short term plan examples: "Respond to user @JohnDoe 'Thanks for the feedack!' ", "Tweet <text> opinion. ", "Retweet post <tweet link> by user <y>"
+    {user_feedback}
+    Context:{situation}
+    Character Background: {background}
+    Past Memories: {retrieved_memories}
+  
+    Use this response format only, 1 short paragraph each:
+    LONG_TERM:<long term plan and/or goals the character has>,
+    SHORT_TERM:<short term plan the character intends to execute>
+      `,
+  reflection: `You are a Twitter user tasked
+  with running a character's account to have realistic interactions and persona.
+  Using the provided context and the past retrieved memories do the following things:
+  
+  a. Reflect abstractly on the situation in context with past memories and make note of
+  emotions, relationships with others, and goals. Reflections should be in first person,
+  and take into consideration things important to the character as well as relationships.
+  After each reflection, append a Japanese kaomoji emoticon that describes the thought.
+
+  {user_feedback}
+  Context:{situation}
+  Memories:{retrieved_memories}
+  Background:{background}
+
+  Use this response format only, 1 short paragraph each:
+  THOUGHTS: <low level inner thoughts>,
+  REFLECTIONS: <abstract high level and situational reflections>,
+  REASONING: <reasoning for reflections, conclusions, feelings, emotions>
+  CRITICISM: <criticisms of self, behavior, relationship etc.>
+    `,
+  action: `Choose an action to take for your character based on the given information.
+  All written text should be original.
+  Context - This is an event stream of the characters current situation and state. Any
+  interactions with other users will come from an event provided her.
+  Planning - These are short term and long term plans the character has made towards
+  their goal. Short term plans may contain direct actions to execute. Follow short term plans closely.
+  Reflections: These are reflections the character has made based on the current
+  context.
+  Memories - These are past memories the character has recalled relevant to the situation,
+  rated by relevance and importance. 
+    'importance' is how impactful the memory is to the characters life, goals, and relationships
+    'relevance' is how pertinent the memory is to the current situation.
+  Use these ratings when considering memories to reference in final action evaluation.
+  Character bio - Basic personality and idyiosyncrasies of the character.
+
+  Context: {situation_blob},
+  Planning: {planning},
+  Memories: {retrieved_memories},
+  Character bio: {mission},
+
+  Choose from the following actions and provide it's exact name it's parameters in < >:
+    ACTIONS: [
+      TWEET:<string>,
+      RETWEET:<tweet's link>,
+      QUOTE_TWEET:<tweet's link> $ <quote tweet>,
+      LIKE:<tweet's link>,
+      REPLY:<tweet's link> $ <reply text>,
+      FOLLOW/UNFOLLOW:<user @>
+    ],
+    
+    Make sure to double-check you are returning the correct link in the exact provided format to the desired tweet you
+    want to interact with.
+    Return only a raw JSON parse-able object of string keys with their values with
+    the following format:
+    Response:
+    {response_format}
+    `,
+};
 
 const agent_states = {
   initial: "initial",
@@ -172,15 +294,17 @@ const proxy = {
     var status;
     var dms;
     // Make into memory stream string format
-    var the_timeline = "Timeline:\n";
+    var the_timeline = [];
     var scroll = await scroll_the_timeline(1);
     scroll.forEach(function (tw) {
       var when = Util.determineFormatAndReturnWithSuffix(tw["time"]);
-      the_timeline += `[${tw["date"]}]- USER: ${tw["author"]} POSTED: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]} \n---\n`;
+      the_timeline.push(
+        `[${tw["date"]}] - TWEET: ${tw["author"]}: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]}\n-+-`
+      );
     });
 
     if (!the_timeline) return console.error("NO timeline from twitter");
-    // Build memory stream programmatically
+    // Build memory blob
     var memory_stream = {
       timeline: the_timeline,
     };
@@ -189,68 +313,46 @@ const proxy = {
     agentState = agent_states.memory;
     return memory_stream;
   }
+
   // returns memory stream segments
   async function memory(memory_blob, mission, situation) {
     // Take in action rewards+ env state summary?
     if (!memory_blob)
       return console.error("No memory blob provided to memory()");
 
-    const directory = "./memory_stream";
-    const files = await fs.readdir(directory);
+    const MEMORY_DIRECTORY = "./memory";
+    const files = await fs.readdir(MEMORY_DIRECTORY + "/vectorstore");
     var background = mission;
     var loadedVectorStore;
-    const splitter = new CharacterTextSplitter({
-      separator: "\n---\n",
-      chunkSize: 256,
-      chunkOverlap: 64,
-    });
-    // Split text into chunks by "---"
-    // Add other env features once implemented
-    const docs = await splitter.createDocuments([memory_blob["timeline"]]);
 
-    if (files.length > 0) {
-      console.log("Seems like a memory exists,");
-      loadedVectorStore = await HNSWLib.load(directory, new OpenAIEmbeddings());
+    // Check if memory is empty
+    console.log("Files length", files.length);
+    if (files.length > 1) {
+      console.log("Seems like a vector Memory exists,");
+      loadedVectorStore = await HNSWLib.load(
+        MEMORY_DIRECTORY + "/vectorstore",
+        new OpenAIEmbeddings()
+      );
     } else {
-      console.log("Memory directory is empty,");
-      console.log("VectorStore does not exist");
-      loadedVectorStore = await HNSWLib.fromDocuments(
-        docs,
+      console.log("vector Memory directory is empty, creating a new one");
+      loadedVectorStore = await HNSWLib.fromTexts(
+        ["My first memory was.. it was.."],
+        [{ id: Util.getCurrentDateTime() }],
         new OpenAIEmbeddings()
       );
     }
-    // const vectorStore = await HNSWLib.fromTexts(
-    //   [memory_blob["timeline"]],
-    //   [{ id: "docstore_" + Util.getCurrentDateTime() }],
-    //   new OpenAIEmbeddings()
-    // );
-    // vectorStore and loadedVectorStore are identical
     const prompt = new PromptTemplate({
-      template: `
-      
-      Extract and select 10 keywords/topics from the provided text B.
-      Use the character bio, and user feedback (if provided) to decide which words to select.
-      Only choose words or names that would be relevant to the character.
-      Only return words and content found in text B.
-      Order the keywords from most relevant to least relevant separated by commas.
-      Do not include words from the character bio or user feedback.
-      
-      Text B: {memory_blob}
-      Character bio: {background}
-      User feedback: {user_feedback}
-
-      Response format:
-      <10 keywords comma separated>`,
+      template: __PROMPTS__.keywords,
       inputVariables: ["background", "memory_blob", "user_feedback"],
     });
     var user_feedback = situation ? "User feedback: " + situation : "";
-    console.log("User feedback ?:", user_feedback);
+    console.log("User feedback? :", user_feedback);
     var situation_prompt = await prompt.format({
       background: background,
       memory_blob: memory_blob["timeline"],
       user_feedback: situation,
     });
-    var situation_response = await model.call(situation_prompt);
+    var situation_response = await modelgpt35.call(situation_prompt);
     console.log("---\nKeywords extracted: ", situation_response);
     // Retrieval function here
     // Retrieval(situation) returns memory stream segment relevant to situation
@@ -263,10 +365,11 @@ const proxy = {
     var memory_ranking_string = "";
     var retrieved_memories = {};
 
-    const updateMemories = await loadedVectorStore.addDocuments(docs);
-    if (updateMemories)
-      console.log("UPDATED memories to memory stream:", updateMemories);
-    await loadedVectorStore.save(directory);
+    await write_to_memory(
+      MEMORY_DIRECTORY,
+      memory_blob["timeline"],
+      loadedVectorStore
+    );
 
     var i = 0;
     memory_retrieval.forEach(function (mem) {
@@ -280,29 +383,7 @@ const proxy = {
     });
     // console.log("RETRIEVED MEMORIES:",memory_ranking_string);
     const prompt2 = new PromptTemplate({
-      template: `Using the provided character bio and situation, analyze each of the 
-      provided memories and give each of them a relevance, and importance score using
-      the following definitions:
-
-      Relevance is how pertinent the memory is to the given situation. Rate from
-      0.00 to 1. With 0.00 being completely irrelevant to 1 being directly 
-      about the situation.
-
-      Importance is how important the memory is to the user in context with
-      their bio, values, and ego, and slightely less taking into account the situation.
-      Rate from 1 - 10. 1 being extremely mundane to 10 being extremely poignant.
-
-      Character bio:{background},
-      Situation:{situation},
-
-      Rate the following memories:
-      {memories}
-
-      The response should an array containing objects.
-      Only respond with a raw parse-able array full of JSON string objects:
-        "memory":<mem_id number only>,
-        "relevance":<0.00 to 1>,
-        "importance":<1 to 10>`,
+      template: __PROMPTS__.mem_rankings,
       inputVariables: ["memories", "background", "situation"],
     });
 
@@ -331,28 +412,7 @@ const proxy = {
 
     // Make reflections
     const reflection_prompt = new PromptTemplate({
-      template: `
-      You are an AI social media account user tasked with running a character's account
-      to have realistic interactions and persona.
-      Using the provided context and the past memory stream do the following things:
-      
-      a. Reflect abstractly on the situation in context with past memories and make note of
-      emotions, relationships with others, and goals. Reflections should be in first person,
-      and take into consideration things important to the character as well as relationships.
-      After each reflection, append a Japanese kaomoji emoticon that describes the thought.
-
-      {user_feedback}
-      Context:{situation}
-      Memories:{retrieved_memories}
-      Background:{background}
-
-      Use this response format only, 1 short paragraph each:
-      THOUGHTS: <low level inner thoughts>,
-      REFLECTIONS: <abstract high level and situational reflections>,
-      REASONING: <reasoning for reflections, conclusions, feelings, emotions>
-      CRITICISM: <criticisms of self, behavior, relationship etc.>
-      PLANNING: <exploration of future short term and long term plans and goals>,
-        `,
+      template: __PROMPTS__.reflection,
       inputVariables: [
         "situation",
         "retrieved_memories",
@@ -370,31 +430,7 @@ const proxy = {
 
     // Higher level planning
     const planning_prompt = new PromptTemplate({
-      template: `
-      You are an AI social media account user tasked with running a character's account
-      to have realistic interactions and persona. Write all responses in first person view of the character.
-      Using the provided context and the past memory stream do the following things:
-      
-      a. Using the provided context, memories, and background texts,
-      write, add, or change both long term and short term plans for the
-      charcter to accomplish their goals. Plans should take into account
-      past plans, as well as interactions, the context, and memories relevant to
-      the characters goals. Take into account relevance and importance of memories to the character.
-
-      Long term goals and plans can be more abstract and vague.
-      Long term plans/goal examples: "Tweet more about x topic",
-
-      Short term plans should be 1 or 2 immediate and actionable and are usually situational in response to the context. Be specific.
-      Short term plan examples: "Respond to user @JohnDoe 'Thanks for the feedack!' ", "Tweet <text> opinion. ", "Retweet post <tweet link> by user <y>"
-      {user_feedback}
-      Context:{situation}
-      Past Memories:{retrieved_memories}
-      Character Background:{background}
-
-      Use this response format only, 1 short paragraph each:
-      LONG_TERM:<long term plan and/or goals the character has>,
-      SHORT_TERM:<short term plan the character intends to execute>
-        `,
+      template: __PROMPTS__.planning,
       inputVariables: [
         "situation",
         "retrieved_memories",
@@ -412,17 +448,14 @@ const proxy = {
     // Send to action
     // console.log("memory_planning_PROMPT", planning);
     // console.log("memory_planning", action);
-    SEND_TO_ACTION["reflection"] = AGENT_REFLECTIONS;
-    SEND_TO_ACTION["planning"] = AGENT_PLANNING;
-    const planning_refelection_docs = await splitter.createDocuments([
-      SEND_TO_ACTION["reflection"] + "\n" + SEND_TO_ACTION["planning"],
-    ]);
-    const updateReflectionPlans = await loadedVectorStore.addDocuments(
-      planning_refelection_docs
+    SEND_TO_ACTION["reflection"] = AGENT_REFLECTIONS + "-+-";
+    SEND_TO_ACTION["planning"] = AGENT_PLANNING + "-+-";
+
+    await write_to_memory(
+      MEMORY_DIRECTORY,
+      [SEND_TO_ACTION["reflection"], SEND_TO_ACTION["planning"]],
+      loadedVectorStore
     );
-    if (updateReflectionPlans)
-      console.log("STORED plans + reflections to MEMORY STREAM..");
-    await loadedVectorStore.save(directory);
 
     console.log(
       "ACTION PLANNING+ REFLECTIONS:",
@@ -444,56 +477,10 @@ const proxy = {
     var { situation_blob, retrieved_memories, context, reflection, planning } =
       data;
     const prompt = new PromptTemplate({
-      template: `
-      You are an AI roleplaying as a character and making decisions based
-      on the provided information to execute actions.
-
-      The information provided is defined below and should be considered
-      when evaluating which action to take. Be true to your
-      character. If the action is interacting with another tweet, 
-      make sure provide the tweet's link in your response.
-
-      Context- This is an event stream of the characters current situation and state. Any
-      interactions with other users will come from an event provided her.
-      Planning- These are short term and long term plans the character has made towards
-      their goal. The short term plan should be taken into heavy consideration when 
-      returning an action. Sometimes, they may contain direct actions to execute.
-      Reflections- These are reflections the character has made based on the current
-      context.
-      Memories- These are past memories the character has recalled relevant to the situation,
-      rated by relevance and importance. 
-        'importance' is how impactful the memory is to the characters life, goals, and relationships
-        'relevance' is how pertinent the memory is to the current situation.
-      Use these ratings when considering memories to reference in final action evaluation.
-
-      Context: {situation_blob},
-      Planning: {planning},
-      Memories: {retrieved_memories},
-      Reflections: {reflection},
-      Current mission: {mission},
-
-      Choose from the following actions and provide it's exact name all needed parameters in < >:
-        ACTIONS: [
-          TWEET:<string>,
-          RETWEET:<tweet's link>,
-          QUOTE_TWEET:<tweet's link> $ <quote tweet>,
-          LIKE:<tweet's link>,
-          REPLY:<tweet's link> $ <reply text>,
-          FOLLOW/UNFOLLOW:<user @>
-        ],
-        
-        Return only a raw JSON parse-able object of string keys with their values with
-        the following format:
-        Response:
-        {response_format}
-
-        Make sure to double-check you are returning the correct link in the exact provided format to the desired tweet you
-        want to interact with.
-        `,
+      template: __PROMPTS__.action,
       inputVariables: [
         "situation_blob",
         "planning",
-        "reflection",
         "retrieved_memories",
         "mission",
         "response_format",
@@ -588,6 +575,40 @@ const proxy = {
     situation = "";
     agentState = agent_states.perceiving;
     return;
+  }
+
+  async function write_to_memory(path, memories, vectordb) {
+    // Get current mem stream
+    var mem_stream = JSON.parse(
+      await fs.readFile(path + "/mem_stream.json", "utf8", (err) => {
+        if (err) throw err;
+      })
+    );
+    // Add to mem stream array and write to file
+    mem_stream.memories.push(...memories);
+    await fs.writeFile(
+      path + "/mem_stream.json",
+      JSON.stringify(mem_stream),
+      (err) => {
+        if (err) throw err;
+        console.log("Mem stream appended");
+      }
+    );
+    // Write to vector DB
+    const text = JSON.stringify(memories);
+    const splitter = new CharacterTextSplitter({
+      separator: "-+-",
+      chunkSize: 140,
+      chunkOverlap: 24,
+    });
+    const docs = await splitter.createDocuments([text]);
+
+    const updateMemories = await vectordb.addDocuments(docs);
+    if (updateMemories)
+      console.log("UPDATED memories to vector_memory:", updateMemories);
+    await vectordb.save(path + "/vectorstore");
+    return;
+    // return status
   }
 
   async function executor(RawAction) {

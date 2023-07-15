@@ -113,7 +113,7 @@ function getStringBetweenDelimiters(source, delimiter1, delimiter2) {
   }
 
   return source.substring(start, end); // return the portion of source between the delimiters
-};
+}
 
 function removeTwitterFromString(str) {
   var tw = "https://twitter.com";
@@ -124,7 +124,30 @@ function removeTwitterFromString(str) {
   }
 }
 
+function createOrAppendFile(path, dataToAdd) {
+  fs.access(path, fs.constants.F_OK, (err) => {
+    if (err) {
+      // If file doesn't exist, write the new data
+      fs.writeFile(path, JSON.stringify({ memories: dataToAdd }), (err) => {
+        if (err) throw err;
+        console.log("File created!");
+      });
+    } else {
+      // If file exists, read the file and append the new data
+      fs.readFile(path, "utf8", (err, fileData) => {
+        if (err) throw err;
+        let existingData = JSON.parse(fileData);
+        existingData.memories.push(...dataToAdd);
 
+        fs.writeFile(path, JSON.stringify(existingData), (err) => {
+          if (err) throw err;
+          console.log("File appended!");
+        });
+      });
+    }
+  });
+}
+exports.createOrAppendFile = createOrAppendFile;
 exports.goToPage = goToPage;
 exports.waitFor = waitFor;
 exports.aLongTime = aLongTime;

@@ -631,11 +631,11 @@ let agentState = agent_states.initial;
 
   async function feed_txt_file(data_path) {
     const splitter = new CharacterTextSplitter({
-      separator: "\n---\n",
+      separator: "   ",
       chunkSize: 256,
       chunkOverlap: 64,
     });
-    const directory = "./memory_stream";
+    const directory = "./memory/vectorstore";
     const loader = new JSONLoader(data_path);
 
     const docs = await loader.load();
@@ -659,24 +659,25 @@ let agentState = agent_states.initial;
     }
   }
 
-async function manual_signIn(cookies) {
-     // Login
-     console.time("signin");
-     await Util.goToPage(page, "https://twitter.com/login");
-     await Util.waitFor(240000);
+  async function manual_signIn(cookies) {
+    // Login
+    console.time("signin");
+    await Util.goToPage(page, "https://twitter.com/login");
+    await Util.waitFor(240000);
     console.log("5 mins left");
-     await Util.waitFor(240000);
+    await Util.waitFor(240000);
 
-     console.timeEnd("signin");
-     await createCookies(cookies);
+    console.timeEnd("signin");
+    await createCookies(cookies);
 
-     return;
-}
+    return;
+  }
 
-// await manual_signIn("chen");
-// console.log("completed"
-// )
-await makeATweet('whats guud')
-await browser.close();
+  // await manual_signIn("chen");
+  // console.log("completed"
+  // )
+  // await makeATweet('whats guud')
+  await feed_txt_file("./miya.json");
+  await browser.close();
   console.timeEnd("whole task");
 })();
