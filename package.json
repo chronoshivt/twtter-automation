@@ -17,7 +17,7 @@
     "hnswlib-node": "^1.4.2",
     "inquirer": "^8.0.0",
     "jsonfile": "^6.1.0",
-    "langchain": "^0.0.77",
+    "langchain": "^0.0.109",
     "openai": "^3.2.1",
     "puppeteer": "^19.8.0",
     "puppeteer-extra": "^3.3.6",

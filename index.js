@@ -14,6 +14,7 @@ const { HNSWLib } = require("langchain/vectorstores/hnswlib");
 const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
 const { CharacterTextSplitter } = require("langchain/text_splitter");
 const { JSONLoader } = require("langchain/document_loaders/fs/json");
+const { StructuredOutputParser } = require("langchain/output_parsers");
 
 // Other config
 const cheerio = require("cheerio");
@@ -23,15 +24,14 @@ const asciify = require("asciify");
 require("dotenv").config();
 const autowrong = require("autowrong");
 const inquirer = require("inquirer");
+let config = require("./config.json");
 
 // OpenAI config
 const { Configuration, OpenAIApi } = require("openai");
 const api_key = process.env.API_KEY;
-const configuration = new Configuration({
-  apiKey: api_key,
-});
-const openai = new OpenAIApi(configuration);
+
 const model = new OpenAI({
+  modelName: "gpt-4",
   openAIApiKey: api_key,
   temperature: 0.9,
 });
@@ -100,8 +100,8 @@ const __PROMPTS__ = {
     Long term goals and plans can be more abstract and vague.
     Long term plans/goal examples: "Tweet more about x topic",
   
-    Short term plans should be 1 or 2 immediate and actionable and are usually situational in response to the context. Be specific.
-    Short term plan examples: "Respond to user @JohnDoe 'Thanks for the feedack!' ", "Tweet <text> opinion. ", "Retweet post <tweet link> by user <y>"
+    Short term plans should be 1 or 2 immediate and actionable and are usually situational in response to the context.
+    Specify which tweets to interact with.
     {user_feedback}
     Context:{situation}
     Character Background: {background}
@@ -131,42 +131,36 @@ const __PROMPTS__ = {
   REASONING: <reasoning for reflections, conclusions, feelings, emotions>
   CRITICISM: <criticisms of self, behavior, relationship etc.>
     `,
-  action: `Choose an action to take for your character based on the given information.
-  All written text should be original.
-  Context - This is an event stream of the characters current situation and state. Any
-  interactions with other users will come from an event provided her.
+  action: `
+  Return an action and it's necessary inputs to execute while role-playing as the character from the
+  given information defined below:
+  Context - This is an event stream of the the characaters social media environment.
   Planning - These are short term and long term plans the character has made towards
-  their goal. Short term plans may contain direct actions to execute. Follow short term plans closely.
-  Reflections: These are reflections the character has made based on the current
-  context.
+  their goals. Short term plans may contain direct actions to execute. Follow short term plans closely.
   Memories - These are past memories the character has recalled relevant to the situation,
-  rated by relevance and importance. 
-    'importance' is how impactful the memory is to the characters life, goals, and relationships
-    'relevance' is how pertinent the memory is to the current situation.
-  Use these ratings when considering memories to reference in final action evaluation.
-  Character bio - Basic personality and idyiosyncrasies of the character.
+  rated by relevance and importance.
+  'importance' is how impactful the memory is to the characters life, goals, and relationships
+  'relevance' is how pertinent the memory is to the current situation.
+  Use these ratings when considering memories to reference in final action evaluation and text generation.
+  Character bio - Basic personality and idiosyncrasies of the character.
 
   Context: {situation_blob},
   Planning: {planning},
   Memories: {retrieved_memories},
   Character bio: {mission},
 
-  Choose from the following actions and provide it's exact name it's parameters in < >:
+  Include the correct LINK to the tweet the action interacts with from the Context.\n
+  Provide the exact action name from the list below and replace < > with necessary action parameters:
     ACTIONS: [
       TWEET:<string>,
-      RETWEET:<tweet's link>,
-      QUOTE_TWEET:<tweet's link> $ <quote tweet>,
-      LIKE:<tweet's link>,
-      REPLY:<tweet's link> $ <reply text>,
+      RETWEET:<link to tweet>,
+      QUOTE_TWEET: <link to tweet> $ <quote string>,
+      LIKE:<tweet to tweet>,
+      REPLY: <link to tweet> $ <reply string>,
       FOLLOW/UNFOLLOW:<user @>
     ],
-    
-    Make sure to double-check you are returning the correct link in the exact provided format to the desired tweet you
-    want to interact with.
-    Return only a raw JSON parse-able object of string keys with their values with
-    the following format:
-    Response:
-    {response_format}
+    \n
+    {format_instructions}
     `,
 };
 
@@ -182,9 +176,9 @@ let agentState = agent_states.initial;
 
 // Proxy settings
 const proxy = {
-  ipPort: "gw.thunderproxies.net:5959",
-  user: "H7ZLEvd4oUxuskm5H5-res_sc-US_TEXAS",
-  pass: "rdA9xtg2qfcZAg1uwT",
+  ipPort: config.proxy.ipPort,
+  user: config.proxy.user,
+  pass: config.proxy.pass,
 };
 // const proxy = Util.rotateProxies("./proxies/proxies.txt");
 
@@ -232,7 +226,7 @@ const proxy = {
   const page = await browser.newPage();
   await page.setDefaultNavigationTimeout(0);
   // Setting cookies for each account to avoid having to relog into Twitter.
-  const cookieString = await fs.readFile("./cookies/chen.json");
+  const cookieString = await fs.readFile(config.cookies_path);
   const cookies = JSON.parse(cookieString);
   await page.setCookie(...cookies);
   // // Connect to proxy
@@ -248,14 +242,13 @@ const proxy = {
   // -----------------
 
   var CONTINOUS_MODE = false;
-  const MAX_ITERATIONS = 10;
+  const MAX_ITERATIONS = config.MAX_ITERATIONS;
 
   var memory_blob;
   var situation = false;
   var ACTION_EXECUTING;
-  let mission = `I am a 4chan user that likes to troll and cause a ruckus on the timeline, I like
-    to get twitter users angry and make funny tweets loll, I also type in all lowercase and
-    am quirky.`;
+  let mission = config.bio;
+
   if (agentState === "initial") {
     console.log("Mission:", mission);
     if (mission) {
@@ -270,7 +263,6 @@ const proxy = {
     (agentState !== null || agentState !== "initial")
   ) {
     console.log(`Global: Current state: ${agentState}`);
-    i++;
     switch (agentState) {
       case agent_states.perceiving:
         console.log("Currently PERCEIVING...");
@@ -286,33 +278,76 @@ const proxy = {
         ACTION_EXECUTING = null;
         break;
     }
+    i++;
   }
 
   async function perceive() {
-    // GET ALL RELEVANT ENVIRONMENT INFORMATION TO THE AGENT
-    var notifications;
-    var status;
-    var dms;
-    // Make into memory stream string format
-    var the_timeline = [];
-    var scroll = await scroll_the_timeline(1);
-    scroll.forEach(function (tw) {
-      var when = Util.determineFormatAndReturnWithSuffix(tw["time"]);
-      the_timeline.push(
-        `[${tw["date"]}] - TWEET: ${tw["author"]}: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]}\n-+-`
-      );
-    });
+    try {
+      // GET ALL RELEVANT ENVIRONMENT INFORMATION TO THE AGENT
+      var notifications;
+      var status;
+      var dms;
+      // Make into memory stream string format
+      let scroll = await scroll_the_timeline(1);
+      if (!scroll || scroll.length === 0)
+        return console.error("NO timeline from twitter");
 
-    if (!the_timeline) return console.error("NO timeline from twitter");
-    // Build memory blob
-    var memory_stream = {
-      timeline: the_timeline,
-    };
-    // console.log(memory_stream);
-    // Check for situation?
-    agentState = agent_states.memory;
-    return memory_stream;
+      let the_timeline = scroll.map((tw) => {
+        let when = Util.determineFormatAndReturnWithSuffix(tw["time"]);
+        return {
+          tweet_body: tw["tweet"],
+          author: tw["author"],
+          link: tw["link"],
+          when: when,
+          date: tw["date"],
+        };
+      });
+
+      // Build memory blob
+      let memory_stream = {
+        timeline: the_timeline,
+      };
+
+      // Check for situation?
+      agentState = agent_states.memory;
+      return memory_stream;
+    } catch (error) {
+      console.error("Error while scrolling the timeline: ", error);
+    }
   }
+
+  // async function perceive() {
+  //   // GET ALL RELEVANT ENVIRONMENT INFORMATION TO THE AGENT
+  //   var notifications;
+  //   var status;
+  //   var dms;
+  //   // Make into memory stream string format
+  //   var the_timeline = [];
+  //   var scroll = await scroll_the_timeline(1);
+  //   scroll.forEach(function (tw) {
+  //     var when = Util.determineFormatAndReturnWithSuffix(tw["time"]);
+  //     // the_timeline.push(
+  //     //   `[${tw["date"]}] - TWEET: ${tw["author"]}: "${tw["tweet"]}" ${when}. \n LINK:${tw["link"]}\n-+-`
+  //     // );
+  //     the_timeline.push({
+  //       tweet_body: tw["tweet"],
+  //       author: tw["author"],
+  //       link: tw["link"],
+  //       when: when,
+  //       date: tw["date"],
+  //     });
+  //   });
+
+  //   if (!the_timeline) return console.error("NO timeline from twitter");
+  //   // Build memory blob
+  //   var memory_stream = {
+  //     timeline: the_timeline,
+  //   };
+  //   // console.log(memory_stream);
+  //   // Check for situation?
+  //   agentState = agent_states.memory;
+  //   return memory_stream;
+  // }
 
   // returns memory stream segments
   async function memory(memory_blob, mission, situation) {
@@ -325,8 +360,16 @@ const proxy = {
     var background = mission;
     var loadedVectorStore;
 
+    var MEMORY_BLOB_STRING = "";
+    memory_blob["timeline"].forEach((__tweet) => {
+      MEMORY_BLOB_STRING += `\n-+-\n
+      TWEET:${__tweet["tweet_body"]}
+      AUTHOR:${__tweet["author"]}
+      LINK:${__tweet["link"]}`;
+    });
+
+    console.log("MEMORYBLOBSTRING", MEMORY_BLOB_STRING);
     // Check if memory is empty
-    console.log("Files length", files.length);
     if (files.length > 1) {
       console.log("Seems like a vector Memory exists,");
       loadedVectorStore = await HNSWLib.load(
@@ -349,7 +392,7 @@ const proxy = {
     console.log("User feedback? :", user_feedback);
     var situation_prompt = await prompt.format({
       background: background,
-      memory_blob: memory_blob["timeline"],
+      memory_blob: MEMORY_BLOB_STRING,
       user_feedback: situation,
     });
     var situation_response = await modelgpt35.call(situation_prompt);
@@ -365,11 +408,7 @@ const proxy = {
     var memory_ranking_string = "";
     var retrieved_memories = {};
 
-    await write_to_memory(
-      MEMORY_DIRECTORY,
-      memory_blob["timeline"],
-      loadedVectorStore
-    );
+    await write_to_memory(MEMORY_DIRECTORY, memory_blob, loadedVectorStore);
 
     var i = 0;
     memory_retrieval.forEach(function (mem) {
@@ -393,7 +432,7 @@ const proxy = {
       situation: mission,
     });
 
-    var retrieval_ranking = await model.call(retrieval_prompt);
+    var retrieval_ranking = await modelgpt35.call(retrieval_prompt);
     // Map ratings to retrieved memories
     JSON.parse(retrieval_ranking).forEach(function (ranking) {
       retrieved_memories[ranking["memory"]]["relevance"] = ranking["relevance"];
@@ -402,7 +441,7 @@ const proxy = {
     });
     console.log("RETRIEVED MEMORIES + RANKINGS:", retrieved_memories);
     var SEND_TO_ACTION = {
-      situation_blob: memory_blob["timeline"],
+      situation_blob: MEMORY_BLOB_STRING,
       retrieved_memories: retrieved_memories,
       context: mission,
       reflection: "",
@@ -421,7 +460,7 @@ const proxy = {
       ],
     });
     var reflections = await reflection_prompt.format({
-      situation: memory_blob["timeline"],
+      situation: MEMORY_BLOB_STRING,
       retrieved_memories: retrieved_memories,
       background: background,
       user_feedback: user_feedback,
@@ -439,7 +478,7 @@ const proxy = {
       ],
     });
     var future_plans = await planning_prompt.format({
-      situation: memory_blob["timeline"],
+      situation: MEMORY_BLOB_STRING,
       retrieved_memories: retrieved_memories,
       background: background,
       user_feedback: user_feedback,
@@ -453,7 +492,10 @@ const proxy = {
 
     await write_to_memory(
       MEMORY_DIRECTORY,
-      [SEND_TO_ACTION["reflection"], SEND_TO_ACTION["planning"]],
+      {
+        reflection: [{ mem: SEND_TO_ACTION["reflection"] }],
+        planning: [{ mem: SEND_TO_ACTION["planning"] }],
+      },
       loadedVectorStore
     );
 
@@ -474,6 +516,12 @@ const proxy = {
     // If no, ask for user input. Return to memory with user input.
     // Begin action,
     //
+    const parser = StructuredOutputParser.fromNamesAndDescriptions({
+      action: "action and parameters to execute",
+      reason: "reasoning for choosing action",
+    });
+    const formatInstructions = parser.getFormatInstructions();
+
     var { situation_blob, retrieved_memories, context, reflection, planning } =
       data;
     const prompt = new PromptTemplate({
@@ -483,8 +531,8 @@ const proxy = {
         "planning",
         "retrieved_memories",
         "mission",
-        "response_format",
       ],
+      partialVariables: { format_instructions: formatInstructions },
     });
 
     const action_prompt = await prompt.format({
@@ -493,15 +541,11 @@ const proxy = {
       reflection: reflection,
       retrieved_memories: retrieved_memories,
       mission: mission,
-      response_format: `{
-        "ACTION":"<action+params>",
-        "REASONING":"<reasoning>",
-        "EXPECTED_REWARD":"<expected reward>"
-      }`,
     });
+
     const act_res = await model.call(action_prompt);
     console.log("Action RESPONSE:", act_res);
-    var ACTION_RESPONSE = JSON.parse(act_res.split("Response:")[1]);
+    var ACTION_RESPONSE = await parser.parse(act_res);
     // User input questions
     const inputQuestions = [
       {
@@ -578,24 +622,42 @@ const proxy = {
   }
 
   async function write_to_memory(path, memories, vectordb) {
+    var MEM_STRING_BLOB = "";
     // Get current mem stream
     var mem_stream = JSON.parse(
       await fs.readFile(path + "/mem_stream.json", "utf8", (err) => {
         if (err) throw err;
       })
     );
-    // Add to mem stream array and write to file
-    mem_stream.memories.push(...memories);
-    await fs.writeFile(
-      path + "/mem_stream.json",
-      JSON.stringify(mem_stream),
-      (err) => {
-        if (err) throw err;
-        console.log("Mem stream appended");
-      }
-    );
+    Object.keys(memories).forEach(async function (key) {
+      console.log(key + " -> " + memories[key]);
+
+      memories[key].forEach((ind_mem) => {
+        if (key == "timeline") {
+          MEM_STRING_BLOB += `\n-+-\n
+            TWEET:${ind_mem["tweet_body"]}
+            AUTHOR:${ind_mem["author"]}
+            LINK:${ind_mem["link"]}`;
+        } else if (key == "planning" || key == "relflection") {
+          MEM_STRING_BLOB += `\n-+-\n
+          ${ind_mem["mem"]}
+            `;
+        }
+      });
+
+      // Add to mem stream array and write to file
+      mem_stream.memories.push(...memories[key]);
+      await fs.writeFile(
+        path + "/mem_stream.json",
+        JSON.stringify(mem_stream),
+        (err) => {
+          if (err) throw err;
+          console.log("Mem stream appended");
+        }
+      );
+    });
     // Write to vector DB
-    const text = JSON.stringify(memories);
+    const text = MEM_STRING_BLOB;
     const splitter = new CharacterTextSplitter({
       separator: "-+-",
       chunkSize: 140,
@@ -612,40 +674,55 @@ const proxy = {
   }
 
   async function executor(RawAction) {
-    var action = RawAction.ACTION;
-    var action_split = action.split(":");
-    var func = action_split[0];
-    var data = action_split[1];
-    if (!func || !data)
+    const action = RawAction;
+    const func = action.action;
+    let reason = action.reason;
+    if (!func || !reason)
       return "ERROR: Improper or no func or data passed to executor";
-    if (func === "TWEET") {
-      console.log("AGENT TWEETING:" + data);
-      await makeATweet(data);
-    } else if (func === "RETWEET") {
-      console.log("AGENT RETWEETING:" + data);
-      var link = Util.removeTwitterFromString(data.trim());
-      await basicRetweet(link);
-    } else if (func === "QUOTE_TWEET") {
-      console.log("AGENT QUOTE-TWEETING:" + data);
-      var datasplit = data.split("$");
-      var link = Util.removeTwitterFromString(datasplit[0].trim());
-      var text = datasplit[1];
-      await quoteTweet(link, text);
-    } else if (func === "LIKE") {
-      console.log("AGENT LIKING:" + data);
-      var link = Util.removeTwitterFromString(data.trim());
-      await likeTweet(link);
-    } else if (func === "REPLY") {
-      var datasplit = data.split("$");
-      var link = Util.removeTwitterFromString(datasplit[0].trim());
-      var text = datasplit[1];
-      console.log("AGENT REPLYING:" + data);
-      await replyToTweet(link, text);
-    } else if (func === "FOLLOW" || func === "UNFOLLOW") {
-      console.log("AGENT UNFOLLOWING/FOLLOWING:" + data);
+
+    var action_name = func.split(":")[0];
+    var action_params = func.split(":")[1];
+    // Remove < and > characters from data, if present
+    action_params = action_params.replace(/<|>/g, "");
+
+    // Log the action and remove twitter from data string
+    console.log(`AGENT ${action_name}ing: ${action_params}`);
+    if (["RETWEET", "LIKE"].includes(action_name)) {
+      action_params = Util.removeTwitterFromString(action_params.trim());
     }
 
-    // Write action exection to memory;
+    // Define link and text variables once if they're needed
+    let link, text;
+    if (["QUOTE_TWEET", "REPLY"].includes(action_name)) {
+      [link, text] = action_params.split("$");
+      link = Util.removeTwitterFromString(link.trim());
+    }
+
+    switch (action_name) {
+      case "TWEET":
+        await makeATweet(action_params);
+        break;
+      case "RETWEET":
+        await basicRetweet(action_params);
+        break;
+      case "QUOTE_TWEET":
+        await quoteTweet(link, text);
+        break;
+      case "LIKE":
+        await likeTweet(action_params);
+        break;
+      case "REPLY":
+        await replyToTweet(link, text);
+        break;
+      case "FOLLOW":
+      case "UNFOLLOW":
+        // do something for FOLLOW and UNFOLLOW
+        break;
+      default:
+        console.log(`No valid action was provided.`);
+    }
+
+    // Write action history execution to memory
   }
 
   async function makeATweet(tweet) {
@@ -654,7 +731,7 @@ const proxy = {
     await Util.waitFor(300);
     await page.keyboard.press("Tab");
     await page.keyboard.press("Tab");
-    await page.keyboard.press("Tab");
+    // await page.keyboard.press("Tab");
     await Util.waitFor(500);
     await page.keyboard.type(tweet, {
       delay: 125,

@@ -14,6 +14,7 @@ const { HNSWLib } = require("langchain/vectorstores/hnswlib");
 const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
 const { CharacterTextSplitter } = require("langchain/text_splitter");
 const { TextLoader } = require("langchain/document_loaders/fs/text");
+let config = require("./config.json");
 
 const { JSONLoader } = require("langchain/document_loaders/fs/json");
 
@@ -64,9 +65,9 @@ let agentState = agent_states.initial;
   // Configure proxy
   // const proxy = Util.rotateProxies("./proxies/proxies.txt");
   const proxy = {
-    ipPort: "gw.thunderproxies.net:5959",
-    user: "H7ZLEvd4oUxuskm5H5-res_sc-US_TEXAS",
-    pass: "rdA9xtg2qfcZAg1uwT",
+    ipPort: config.proxy.ipPort,
+    user: config.proxy.user,
+    pass: config.proxy.pass,
   };
   // Launch browser
   console.time("whole task");
@@ -676,8 +677,7 @@ let agentState = agent_states.initial;
   // await manual_signIn("chen");
   // console.log("completed"
   // )
-  // await makeATweet('whats guud')
-  await feed_txt_file("./miya.json");
+  await makeATweet("whats guud");
   await browser.close();
   console.timeEnd("whole task");
 })();

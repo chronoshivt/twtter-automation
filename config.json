@@ -1,0 +1,10 @@
+{
+  "bio": "I am an opinionated person, I like to argue with people online. Long rants and tangents are sorta my thing",
+  "MAX_ITERATIONS": 10,
+  "cookies_path": "./cookies/chen.json",
+  "proxy": {
+    "ipPort": "gw.thunderproxies.net:5959",
+    "user": "H7ZLEvd4oUxuskm5H5-res_sc-US_TEXAS",
+    "pass": "rdA9xtg2qfcZAg1uwT"
+  }
+}
