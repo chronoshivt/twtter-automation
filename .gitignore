@@ -6,3 +6,4 @@ node_modules
 tweetsArchive
 proxies
 memory_stream
+memory/vectorstore
